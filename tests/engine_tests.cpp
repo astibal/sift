@@ -43,7 +43,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 19,
+    check(live_stats.at("signatures").at("loaded") == 21,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");
@@ -89,5 +89,13 @@ int main() {
                     "protocol.ajp13.ping"), "AJP ping did not match");
     check(has_match(runtime.inspect("memcache", 'L', "get key\r\n"),
                     "protocol.memcached.ascii"), "memcached ASCII did not match");
+    sift::InspectionMetadata youtube_video_metadata{{"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}};
+    check(has_match(runtime.inspect("youtube-video", 'L', "payload", youtube_video_metadata),
+                    "app.youtube.video"), "YouTube video hostname did not match");
+    check(runtime.inspect("youtube-video", 'R', "more", youtube_video_metadata).matches.empty(),
+          "YouTube video application matched more than once per flow");
+    sift::InspectionMetadata unrelated_metadata{{"notgooglevideo.com"}};
+    check(!has_match(runtime.inspect("unrelated", 'L', "payload", unrelated_metadata),
+                     "app.youtube.video"), "YouTube suffix matched without a domain boundary");
     return failures == 0 ? 0 : 1;
 }

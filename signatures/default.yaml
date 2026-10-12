@@ -1,0 +1,63 @@
+version: 1
+signatures:
+  - name: protocol.http1.request
+    match: [{side: L, op: prefix_any, values: ["OPTIONS ", "GET ", "HEAD ", "POST ", "PUT ", "DELETE ", "CONNECT ", "PATCH ", "PROPFIND ", "PROPPATCH ", "TRACE ", "UPDATE "]}]
+    candidates: [{side: L, regex: '^(OPTIONS|GET|HEAD|POST|PUT|DELETE|CONNECT|PATCH|PROPFIND|PROPPATCH|TRACE|UPDATE) '}]
+  - name: protocol.http1.response
+    match: [{side: R, op: prefix, value: "HTTP/"}]
+    candidates: [{side: R, regex: '^HTTP/[0-9]'}]
+  - name: protocol.http2.prior-knowledge
+    match: [{side: L, op: prefix, value: "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"}]
+    candidates: [{side: L, regex: '^PRI \* HTTP/2\.0\x0d\x0a\x0d\x0aSM\x0d\x0a\x0d\x0a'}]
+  - name: security.tls.client-hello
+    match: [{side: L, op: tls_handshake, type: 1}]
+    candidates: [{side: L, regex: '^\x16\x03[\x00-\x0f]..\x01'}]
+  - name: security.tls.server-hello
+    match: [{side: R, op: tls_handshake, type: 2}]
+    candidates: [{side: R, regex: '^\x16\x03[\x00-\x0f]..\x02'}]
+  - name: protocol.ssh.banner-both
+    match: [{side: L, op: line_prefix_within, value: "SSH-", limit: 255}, {side: R, op: line_prefix_within, value: "SSH-", limit: 255}]
+    candidates: [{side: E, regex: '(^|\x0a)SSH-[12]\.'}]
+  - name: protocol.smb1.netbios
+    match: [{side: E, op: hex_at, offset: 4, value: ff534d42}]
+    candidates: [{side: E, regex: '^....\xffSMB'}]
+  - name: protocol.smb2.netbios
+    match: [{side: E, op: hex_at, offset: 4, value: fe534d42}]
+    candidates: [{side: E, regex: '^....\xfeSMB'}]
+  - name: protocol.smb3.encrypted
+    match: [{side: E, op: hex_at, offset: 4, value: fd534d42}]
+    candidates: [{side: E, regex: '^....\xfdSMB'}]
+  - name: protocol.postgresql.sslrequest
+    match: [{side: L, op: hex_at, offset: 0, value: 0000000804d2162f}, {side: R, op: prefix_any, values: [S, N]}]
+    candidates: [{side: L, regex: '^\x00\x00\x00\x08\x04\xd2\x16\x2f'}, {side: R, regex: '^[SN]'}]
+  - name: protocol.rfb.banner-both
+    match: [{side: L, op: prefix, value: "RFB "}, {side: R, op: prefix, value: "RFB "}]
+    candidates: [{side: E, regex: '^RFB '}]
+  - name: protocol.sip.dialog
+    match: [{side: L, op: prefix_any, values: ["REGISTER ", "INVITE ", "BYE ", "OPTIONS "]}, {side: R, op: prefix, value: "SIP/2.0"}]
+    candidates: [{side: L, regex: '^(REGISTER|INVITE|BYE|OPTIONS) '}, {side: R, regex: '^SIP/2\.0'}]
+  - name: protocol.bittorrent.handshake
+    match: [{side: E, op: hex_at, offset: 0, value: 13426974546f7272656e742070726f746f636f6c}]
+    candidates: [{side: E, regex: '^\x13BitTorrent protocol'}]
+  - name: protocol.amqp.v091
+    match: [{side: L, op: hex_at, offset: 0, value: 414d515000000901}]
+    candidates: [{side: L, regex: '^AMQP\x00\x00\x09\x01'}]
+  - name: protocol.amqp.v10
+    match: [{side: L, op: hex_at, offset: 0, value: 414d515000010000}]
+    candidates: [{side: L, regex: '^AMQP\x00\x01\x00\x00'}]
+  - name: protocol.amqp.sasl
+    match: [{side: L, op: hex_at, offset: 0, value: 414d515003010000}]
+    candidates: [{side: L, regex: '^AMQP\x03\x01\x00\x00'}]
+  - name: protocol.ajp13.ping
+    match: [{side: L, op: hex_at, offset: 0, value: 123400010a}]
+    candidates: [{side: L, regex: '^\x12\x34\x00\x01\x0a'}]
+  - name: protocol.ajp13.cpong
+    match: [{side: R, op: hex_at, offset: 0, value: 4142000109}]
+    candidates: [{side: R, regex: '^AB\x00\x01\x09'}]
+  - name: protocol.memcached.ascii
+    match: [{side: L, op: prefix_any, values: ["get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ", "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r", flush_all]}]
+    candidates: [{side: L, regex: '^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) '}, {side: L, regex: '^(stats|version)\x0d'}, {side: L, regex: '^flush_all'}]
+  - name: app.youtube.video
+    match: [{side: H, op: domain_suffix_any, values: [googlevideo.com]}]
+  - name: app.youtube
+    match: [{side: H, op: domain_suffix_any, values: [youtube.com, youtube-nocookie.com, youtu.be, ytimg.com, youtubei.googleapis.com]}]

@@ -115,8 +115,22 @@ private:
         }
         const auto side_text = info.value("side", "L");
         const auto side = side_text.empty() ? 'L' : side_text.front();
+        InspectionMetadata metadata;
+        if (auto sni = info.find("sni"); sni != info.end() && sni->is_string()) {
+            metadata.hostnames.push_back(sni->get<std::string>());
+        }
+        if (auto hostname = info.find("hostname");
+            hostname != info.end() && hostname->is_string()) {
+            metadata.hostnames.push_back(hostname->get<std::string>());
+        }
+        if (auto hostnames = info.find("hostnames");
+            hostnames != info.end() && hostnames->is_array()) {
+            for (const auto& hostname : *hostnames) {
+                if (hostname.is_string()) metadata.hostnames.push_back(hostname.get<std::string>());
+            }
+        }
         auto reply = verdict_json(runtime_.inspect(
-            info.value("session", event.value("id", "")), side, payload));
+            info.value("session", event.value("id", "")), side, payload, metadata));
         runtime_.record_total_delay(std::chrono::steady_clock::now() - started);
         return reply;
     }

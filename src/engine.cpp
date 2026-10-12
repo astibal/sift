@@ -2,40 +2,35 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <hs/hs.h>
 #include <stdexcept>
 #include <vector>
 
+#include <compiled_signatures.hpp>
+
 namespace sift {
 namespace {
 
-using Matcher = bool (*)(std::string_view, std::string_view);
+std::string normalized_hostname(std::string_view hostname) {
+    while (!hostname.empty() && hostname.back() == '.') hostname.remove_suffix(1);
+    std::string result;
+    result.reserve(hostname.size());
+    for (const auto ch : hostname) {
+        result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return result;
+}
 
-struct BootstrapSignature {
-    std::string_view name;
-    Matcher matches;
-};
-
-bool starts_with(const std::string_view value, const std::string_view prefix) {
-    return value.starts_with(prefix);
+bool domain_is(const std::string_view hostname, const std::string_view domain) {
+    return hostname == domain ||
+           (hostname.size() > domain.size() && hostname.ends_with(domain) &&
+            hostname[hostname.size() - domain.size() - 1] == '.');
 }
 
 bool at(const std::string_view value, const std::size_t offset,
         const std::string_view bytes) {
     return value.size() >= offset + bytes.size() && value.substr(offset, bytes.size()) == bytes;
-}
-
-bool either_at(const std::string_view left, const std::string_view right,
-               const std::size_t offset, const std::string_view bytes) {
-    return at(left, offset, bytes) || at(right, offset, bytes);
-}
-
-bool http_request(const std::string_view left, std::string_view) {
-    constexpr std::array<std::string_view, 12> methods{
-        "OPTIONS ", "GET ", "HEAD ", "POST ", "PUT ", "DELETE ",
-        "CONNECT ", "PATCH ", "PROPFIND ", "PROPPATCH ", "TRACE ", "UPDATE "};
-    return std::any_of(methods.begin(), methods.end(),
-                       [left](const std::string_view method) { return starts_with(left, method); });
 }
 
 bool tls_hello(const std::string_view stream, const unsigned char handshake_type) {
@@ -53,102 +48,23 @@ bool tls_hello(const std::string_view stream, const unsigned char handshake_type
     return record_length >= 4 && handshake_length + 4U <= record_length;
 }
 
-bool ssh_banner(const std::string_view stream) {
-    const auto position = stream.find("SSH-");
-    return position != std::string_view::npos && position <= 255 &&
-           (position == 0 || stream[position - 1] == '\n');
-}
-
-bool memcached_ascii(const std::string_view left, std::string_view) {
-    constexpr std::array<std::string_view, 15> commands{
-        "get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ",
-        "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r",
-        "flush_all"};
-    return std::any_of(commands.begin(), commands.end(),
-                       [left](const std::string_view command) { return starts_with(left, command); });
-}
-
-// Bootstrap subset of smithproxy-signature-pack. The compiled-pack loader will
-// replace this table; these rules preserve direction and multi-clause flow semantics.
-constexpr std::array bootstrap_signatures{
-    BootstrapSignature{"protocol.http1.request", http_request},
-    BootstrapSignature{"protocol.http1.response", [](std::string_view, const std::string_view r) { return starts_with(r, "HTTP/"); }},
-    BootstrapSignature{"protocol.http2.prior-knowledge", [](const std::string_view l, std::string_view) { return starts_with(l, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"); }},
-    BootstrapSignature{"security.tls.client-hello", [](const std::string_view l, std::string_view) { return tls_hello(l, 1); }},
-    BootstrapSignature{"security.tls.server-hello", [](std::string_view, const std::string_view r) { return tls_hello(r, 2); }},
-    BootstrapSignature{"protocol.ssh.banner-both", [](const std::string_view l, const std::string_view r) { return ssh_banner(l) && ssh_banner(r); }},
-    BootstrapSignature{"protocol.smb1.netbios", [](const std::string_view l, const std::string_view r) { return either_at(l, r, 4, std::string_view{"\xffSMB", 4}); }},
-    BootstrapSignature{"protocol.smb2.netbios", [](const std::string_view l, const std::string_view r) { return either_at(l, r, 4, std::string_view{"\xfeSMB", 4}); }},
-    BootstrapSignature{"protocol.smb3.encrypted", [](const std::string_view l, const std::string_view r) { return either_at(l, r, 4, std::string_view{"\xfdSMB", 4}); }},
-    BootstrapSignature{"protocol.postgresql.sslrequest", [](const std::string_view l, const std::string_view r) { return starts_with(l, std::string_view{"\0\0\0\x08\x04\xd2\x16\x2f", 8}) && !r.empty() && (r[0] == 'S' || r[0] == 'N'); }},
-    BootstrapSignature{"protocol.rfb.banner-both", [](const std::string_view l, const std::string_view r) { return starts_with(l, "RFB ") && starts_with(r, "RFB "); }},
-    BootstrapSignature{"protocol.sip.dialog", [](const std::string_view l, const std::string_view r) { return (starts_with(l, "REGISTER ") || starts_with(l, "INVITE ") || starts_with(l, "BYE ") || starts_with(l, "OPTIONS ")) && starts_with(r, "SIP/2.0"); }},
-    BootstrapSignature{"protocol.bittorrent.handshake", [](const std::string_view l, const std::string_view r) { return either_at(l, r, 0, std::string_view{"\x13" "BitTorrent protocol", 20}); }},
-    BootstrapSignature{"protocol.amqp.v091", [](const std::string_view l, std::string_view) { return starts_with(l, std::string_view{"AMQP\0\0\x09\x01", 8}); }},
-    BootstrapSignature{"protocol.amqp.v10", [](const std::string_view l, std::string_view) { return starts_with(l, std::string_view{"AMQP\0\x01\0\0", 8}); }},
-    BootstrapSignature{"protocol.amqp.sasl", [](const std::string_view l, std::string_view) { return starts_with(l, std::string_view{"AMQP\x03\x01\0\0", 8}); }},
-    BootstrapSignature{"protocol.ajp13.ping", [](const std::string_view l, std::string_view) { return starts_with(l, std::string_view{"\x12\x34\0\x01\x0a", 5}); }},
-    BootstrapSignature{"protocol.ajp13.cpong", [](std::string_view, const std::string_view r) { return starts_with(r, std::string_view{"AB\0\x01\x09", 5}); }},
-    BootstrapSignature{"protocol.memcached.ascii", memcached_ascii},
-};
-
-struct ScanPattern {
-    std::string_view expression;
-    unsigned rule;
-    char side;
-};
-
-// Rule IDs intentionally match bootstrap_signatures indexes. Hyperscan emits
-// these IDs as cheap candidates; the full matcher above remains authoritative.
-constexpr std::array scan_patterns{
-    ScanPattern{R"(^(OPTIONS|GET|HEAD|POST|PUT|DELETE|CONNECT|PATCH|PROPFIND|PROPPATCH|TRACE|UPDATE) )", 0, 'L'},
-    ScanPattern{R"(^HTTP/[0-9])", 1, 'R'},
-    ScanPattern{R"(^PRI \* HTTP/2\.0\x0d\x0a\x0d\x0aSM\x0d\x0a\x0d\x0a)", 2, 'L'},
-    ScanPattern{R"(^\x16\x03[\x00-\x0f]..\x01)", 3, 'L'},
-    ScanPattern{R"(^\x16\x03[\x00-\x0f]..\x02)", 4, 'R'},
-    ScanPattern{R"((^|\x0a)SSH-[12]\.)", 5, 'E'},
-    ScanPattern{R"(^....\xffSMB)", 6, 'E'},
-    ScanPattern{R"(^....\xfeSMB)", 7, 'E'},
-    ScanPattern{R"(^....\xfdSMB)", 8, 'E'},
-    ScanPattern{R"(^\x00\x00\x00\x08\x04\xd2\x16\x2f)", 9, 'L'},
-    ScanPattern{R"(^[SN])", 9, 'R'},
-    ScanPattern{R"(^RFB )", 10, 'E'},
-    ScanPattern{R"(^(REGISTER|INVITE|BYE|OPTIONS) )", 11, 'L'},
-    ScanPattern{R"(^SIP/2\.0)", 11, 'R'},
-    ScanPattern{R"(^\x13BitTorrent protocol)", 12, 'E'},
-    ScanPattern{R"(^AMQP\x00\x00\x09\x01)", 13, 'L'},
-    ScanPattern{R"(^AMQP\x00\x01\x00\x00)", 14, 'L'},
-    ScanPattern{R"(^AMQP\x03\x01\x00\x00)", 15, 'L'},
-    ScanPattern{R"(^\x12\x34\x00\x01\x0a)", 16, 'L'},
-    ScanPattern{R"(^AB\x00\x01\x09)", 17, 'R'},
-    ScanPattern{R"(^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) )", 18, 'L'},
-    ScanPattern{R"(^(stats|version)\x0d)", 18, 'L'},
-    ScanPattern{R"(^flush_all)", 18, 'L'},
-};
-
-hs_database_t* compile_database(const char side) {
-    std::vector<const char*> expressions;
-    std::vector<unsigned> flags;
-    std::vector<unsigned> ids;
-    for (const auto& pattern : scan_patterns) {
-        if (pattern.side != side && pattern.side != 'E') continue;
-        expressions.push_back(pattern.expression.data());
-        flags.push_back(HS_FLAG_DOTALL | HS_FLAG_SINGLEMATCH);
-        ids.push_back(pattern.rule);
+std::string decode_hex(const std::string_view encoded) {
+    if (encoded.size() % 2 != 0) return {};
+    auto nibble = [](const char ch) -> int {
+        if (ch >= '0' && ch <= '9') return ch - '0';
+        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+        return -1;
+    };
+    std::string result;
+    result.reserve(encoded.size() / 2);
+    for (std::size_t i = 0; i < encoded.size(); i += 2) {
+        const auto high = nibble(encoded[i]);
+        const auto low = nibble(encoded[i + 1]);
+        if (high < 0 || low < 0) return {};
+        result.push_back(static_cast<char>((high << 4) | low));
     }
-    hs_database_t* database{};
-    hs_compile_error_t* error{};
-    const auto result = hs_compile_multi(
-        expressions.data(), flags.data(), ids.data(),
-        static_cast<unsigned>(expressions.size()), HS_MODE_STREAM, nullptr,
-        &database, &error);
-    if (result != HS_SUCCESS) {
-        const std::string message = error && error->message
-            ? error->message : "unknown Hyperscan compile error";
-        if (error) hs_free_compile_error(error);
-        throw std::runtime_error("cannot compile Hyperscan database: " + message);
-    }
-    return database;
+    return result;
 }
 
 struct ScanContext {
@@ -187,8 +103,103 @@ double median_us(const std::deque<std::uint64_t>& samples) {
 
 } // namespace
 
+void Runtime::load_signature_pack() {
+    const auto pack = nlohmann::json::parse(generated::signature_pack);
+    for (const auto& source : pack.at("signatures")) {
+        Rule rule{source.at("name").get<std::string>(), source.at("match"),
+                  source.contains("candidates") && !source.at("candidates").empty()};
+        const auto rule_id = static_cast<unsigned>(rules_.size());
+        rules_.push_back(std::move(rule));
+        if (!source.contains("candidates")) continue;
+        for (const auto& candidate : source.at("candidates")) {
+            const auto side_text = candidate.value("side", "E");
+            scan_patterns_.push_back({candidate.at("regex").get<std::string>(), rule_id,
+                                      side_text.empty() ? 'E' : side_text.front()});
+        }
+    }
+}
+
+hs_database_t* Runtime::compile_database(const char side) const {
+    std::vector<const char*> expressions;
+    std::vector<unsigned> flags;
+    std::vector<unsigned> ids;
+    for (const auto& pattern : scan_patterns_) {
+        if (pattern.side != side && pattern.side != 'E') continue;
+        expressions.push_back(pattern.expression.c_str());
+        flags.push_back(HS_FLAG_DOTALL | HS_FLAG_SINGLEMATCH);
+        ids.push_back(pattern.rule);
+    }
+    hs_database_t* database{};
+    hs_compile_error_t* error{};
+    const auto result = hs_compile_multi(
+        expressions.data(), flags.data(), ids.data(),
+        static_cast<unsigned>(expressions.size()), HS_MODE_STREAM, nullptr,
+        &database, &error);
+    if (result != HS_SUCCESS) {
+        const std::string message = error && error->message
+            ? error->message : "unknown Hyperscan compile error";
+        if (error) hs_free_compile_error(error);
+        throw std::runtime_error("cannot compile Hyperscan database: " + message);
+    }
+    return database;
+}
+
+bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
+    const auto values = [](const nlohmann::json& clause) {
+        std::vector<std::string> result;
+        if (clause.contains("values")) result = clause.at("values").get<std::vector<std::string>>();
+        else if (clause.contains("value")) result.push_back(clause.at("value").get<std::string>());
+        return result;
+    };
+    const auto stream_matches = [&values](const nlohmann::json& clause,
+                                          const std::string_view stream) {
+        const auto op = clause.at("op").get<std::string>();
+        const auto candidates = values(clause);
+        if (op == "prefix" || op == "prefix_any") {
+            return std::any_of(candidates.begin(), candidates.end(),
+                               [stream](const auto& value) { return stream.starts_with(value); });
+        }
+        if (op == "hex_at") {
+            const auto bytes = decode_hex(candidates.at(0));
+            return !bytes.empty() && at(stream, clause.value("offset", 0U), bytes);
+        }
+        if (op == "tls_handshake") {
+            return tls_hello(stream, static_cast<unsigned char>(clause.at("type").get<unsigned>()));
+        }
+        if (op == "line_prefix_within") {
+            const auto position = stream.find(candidates.at(0));
+            return position != std::string_view::npos && position <= clause.value("limit", 0U) &&
+                   (position == 0 || stream[position - 1] == '\n');
+        }
+        throw std::runtime_error("unsupported stream signature operation: " + op);
+    };
+
+    return std::all_of(rule.clauses.begin(), rule.clauses.end(),
+                       [&](const nlohmann::json& clause) {
+        const auto side_text = clause.value("side", "E");
+        const auto side = side_text.empty() ? 'E' : side_text.front();
+        const auto op = clause.at("op").get<std::string>();
+        if (side == 'H') {
+            if (op != "domain_suffix_any")
+                throw std::runtime_error("unsupported hostname signature operation: " + op);
+            const auto domains = values(clause);
+            return std::any_of(flow.hostnames.begin(), flow.hostnames.end(),
+                               [&domains](const auto& hostname) {
+                return std::any_of(domains.begin(), domains.end(),
+                                   [&hostname](const auto& domain) {
+                                       return domain_is(hostname, domain);
+                                   });
+            });
+        }
+        if (side == 'L') return stream_matches(clause, flow.left);
+        if (side == 'R') return stream_matches(clause, flow.right);
+        return stream_matches(clause, flow.left) || stream_matches(clause, flow.right);
+    });
+}
+
 Runtime::Runtime() {
     try {
+        load_signature_pack();
         left_database_ = compile_database('L');
         right_database_ = compile_database('R');
         if (hs_alloc_scratch(left_database_, &scratch_) != HS_SUCCESS ||
@@ -222,13 +233,18 @@ void Runtime::close_scanners(Flow& flow) {
 }
 
 Verdict Runtime::inspect(const std::string_view session, const char side,
-                         const std::string_view payload) {
+                         const std::string_view payload,
+                         const InspectionMetadata& metadata) {
     const auto engine_started = std::chrono::steady_clock::now();
     std::scoped_lock guard(lock_);
     auto [flow_it, inserted] = flows_.try_emplace(std::string(session));
     if (inserted) ++flows_seen_;
     const auto is_right = side == 'R' || side == 'w';
     auto& flow = flow_it->second;
+    for (const auto& hostname : metadata.hostnames) {
+        auto normalized = normalized_hostname(hostname);
+        if (!normalized.empty()) flow.hostnames.emplace(std::move(normalized));
+    }
     auto& stream = is_right ? flow.right : flow.left;
     auto*& scanner = is_right ? flow.right_scanner : flow.left_scanner;
     auto* database = is_right ? right_database_ : left_database_;
@@ -255,22 +271,28 @@ Verdict Runtime::inspect(const std::string_view session, const char side,
     }
 
     Verdict verdict;
+    const auto record_match = [&](const Rule& rule) {
+        flow.matches.emplace(rule.name);
+        verdict.matches.push_back({rule.name, 0, stream.empty() ? 0 : stream.size() - 1});
+        ++matches_;
+        ++signature_matches_[rule.name];
+    };
+    for (const auto& rule : rules_) {
+        if (rule.candidate_driven || flow.matches.contains(rule.name)) continue;
+        if (rule_matches(rule, flow)) record_match(rule);
+    }
     for (auto candidate = flow.candidates.begin(); candidate != flow.candidates.end();) {
-        const auto rule = *candidate;
-        const auto& signature = bootstrap_signatures.at(rule);
-        if (flow.matches.contains(std::string(signature.name))) {
+        const auto rule_id = *candidate;
+        const auto& rule = rules_.at(rule_id);
+        if (flow.matches.contains(rule.name)) {
             candidate = flow.candidates.erase(candidate);
             continue;
         }
-        if (!signature.matches(flow.left, flow.right)) {
+        if (!rule_matches(rule, flow)) {
             ++candidate;
             continue;
         }
-        flow.matches.emplace(signature.name);
-        verdict.matches.push_back({std::string(signature.name), 0,
-                                   stream.empty() ? 0 : stream.size() - 1});
-        ++matches_;
-        ++signature_matches_[std::string(signature.name)];
+        record_match(rule);
         candidate = flow.candidates.erase(candidate);
     }
     if (!verdict.matches.empty()) ++matched_payloads_;
@@ -309,9 +331,9 @@ void Runtime::close(const std::string_view session) {
 nlohmann::json Runtime::status() const {
     std::scoped_lock guard(lock_);
     auto signatures = nlohmann::json::object();
-    for (const auto& signature : bootstrap_signatures) {
-        const auto found = signature_matches_.find(std::string(signature.name));
-        signatures[signature.name] = found == signature_matches_.end() ? 0 : found->second;
+    for (const auto& rule : rules_) {
+        const auto found = signature_matches_.find(rule.name);
+        signatures[rule.name] = found == signature_matches_.end() ? 0 : found->second;
     }
     const auto uptime = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_).count();
@@ -325,9 +347,9 @@ nlohmann::json Runtime::status() const {
     const auto average_total_delay = total_delay_samples_ == 0 ? 0.0
         : ns_to_us(total_delay_total_ns_) / static_cast<double>(total_delay_samples_);
     return {
-        {"service", "siftd"}, {"engine", "bootstrap-hyperscan"},
+        {"service", "siftd"}, {"engine", "compiled-yaml-hyperscan"},
         {"scanner", {{"name", "hyperscan"}, {"version", hs_version()},
-                     {"mode", "stream"}, {"patterns", scan_patterns.size()},
+                     {"mode", "stream"}, {"patterns", scan_patterns_.size()},
                      {"scans", hyperscan_scans_},
                      {"candidates", hyperscan_candidates_}}},
         {"uptime_ms", uptime},
@@ -339,7 +361,7 @@ nlohmann::json Runtime::status() const {
         {"payload_size_bytes", {{"last", last_payload_size_},
                                 {"min", payloads_ == 0 ? 0 : min_payload_size_},
                                 {"max", max_payload_size_}, {"average", average_payload}}},
-        {"signatures", {{"loaded", bootstrap_signatures.size()},
+        {"signatures", {{"loaded", rules_.size()},
                         {"matches", matches_}, {"matched_payloads", matched_payloads_},
                         {"by_name", std::move(signatures)}}},
         {"decisions", {{"accept", accepted_}, {"replace", 0}, {"discard", 0}}},

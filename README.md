@@ -62,6 +62,10 @@ directional traffic, payload sizes, per-signature matches, decisions, uptime,
 and inspection latency. End-to-end round-trip latency requires telemetry from
 Smithproxy and its communication broker and is therefore reported as pending.
 
-The bootstrap runtime currently carries 19 reviewed protocol rules derived
-from `smithproxy-signature-pack`. This remains a temporary, deliberately small
-subset until the compiled-pack loader replaces the built-in table.
+All protocol and application signatures live exclusively in
+`signatures/default.yaml`. The build validates and compiles that pack into an
+embedded artifact consumed by the generic runtime matcher; C++ contains no
+individual signature definitions. Adding or changing a signature therefore
+never requires editing the engine. Python 3 with PyYAML is required when
+building the compiled pack. See [SIGNATURE_POLICY.md](SIGNATURE_POLICY.md) for
+the mandatory rules governing signature changes.

@@ -27,6 +27,10 @@ struct Verdict {
     std::vector<Match> matches;
 };
 
+struct InspectionMetadata {
+    std::vector<std::string> hostnames;
+};
+
 class Runtime {
 public:
     Runtime();
@@ -35,24 +39,41 @@ public:
     Runtime& operator=(const Runtime&) = delete;
 
     [[nodiscard]] Verdict inspect(std::string_view session, char side,
-                                  std::string_view payload);
+                                  std::string_view payload,
+                                  const InspectionMetadata& metadata = {});
     void record_total_delay(std::chrono::nanoseconds elapsed);
     void close(std::string_view session);
     [[nodiscard]] nlohmann::json status() const;
 
 private:
+    struct Rule {
+        std::string name;
+        nlohmann::json clauses;
+        bool candidate_driven{};
+    };
+    struct ScanPattern {
+        std::string expression;
+        unsigned rule{};
+        char side{'E'};
+    };
     struct Flow {
         std::string left;
         std::string right;
         std::unordered_set<std::string> matches;
+        std::unordered_set<std::string> hostnames;
         std::unordered_set<std::size_t> candidates;
         hs_stream_t* left_scanner{};
         hs_stream_t* right_scanner{};
     };
 
     void close_scanners(Flow& flow);
+    void load_signature_pack();
+    [[nodiscard]] hs_database_t* compile_database(char side) const;
+    [[nodiscard]] bool rule_matches(const Rule& rule, const Flow& flow) const;
 
     mutable std::mutex lock_;
+    std::vector<Rule> rules_;
+    std::vector<ScanPattern> scan_patterns_;
     std::unordered_map<std::string, Flow> flows_;
     hs_database_t* left_database_{};
     hs_database_t* right_database_{};
