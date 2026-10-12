@@ -1,5 +1,5 @@
 #include <sift/engine.hpp>
-#include <binary_envelope.hpp>
+#include <sift/sxbn.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -73,7 +73,7 @@ int main() {
     nlohmann::json event;
     std::string payload;
     std::string error;
-    check(spider::decode_sxbn(wire, event, payload, error), "SXBN decode failed");
+    check(sift::sxbn::decode(wire, event, payload, error), "SXBN decode failed");
     check(payload.size() == 8, "SXBN payload lost");
     check(runtime.inspect("x", 'L', payload).matches.size() == 1, "AMQP did not match");
 

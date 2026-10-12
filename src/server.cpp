@@ -1,7 +1,7 @@
 #include <sift/engine_server.hpp>
 
 #include <sift/engine.hpp>
-#include <binary_envelope.hpp>
+#include <sift/sxbn.hpp>
 
 #include <lmhttpd.hpp>
 #include <microhttpd.h>
@@ -80,9 +80,9 @@ private:
         const auto started = std::chrono::steady_clock::now();
         nlohmann::json event;
         std::string payload;
-        if (std::string_view(body).starts_with(spider::sxbn_magic)) {
+        if (std::string_view(body).starts_with(sxbn::magic)) {
             std::string error;
-            if (!spider::decode_sxbn(body, event, payload, error)) {
+            if (!sxbn::decode(body, event, payload, error)) {
                 status = 400;
                 return {{"error", error}};
             }

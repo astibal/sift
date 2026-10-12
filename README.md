@@ -1,8 +1,11 @@
 # Sift
 
-`sx-siftd` is the local payload inspection and decision process. It accepts
-the same webhook handshake and `SXBN001` `connection-content` requests as
-`spider-server`, keeps per-session bidirectional state, and returns a verdict.
+Sift is a stateful streaming payload identification engine. Give it bytes and
+it returns the protocol and content shapes it can establish from those bytes.
+Network addresses and ports are optional hints, never primary evidence.
+
+`sx-siftd` exposes the engine over a deliberately small HTTP/SXBN001 API. It
+accepts bidirectional stream chunks, keeps per-flow state and returns a verdict.
 Sift requires Intel Hyperscan (`libhyperscan-dev` on Debian/Ubuntu); there is no
 silent `std::regex` fallback.
 
@@ -11,14 +14,40 @@ database per direction. Each flow owns left and right streaming scanner state;
 Hyperscan emits candidate rule IDs and the stateful matchers perform the final
 multi-direction and structural checks.
 
-This first extraction deliberately lives beside Spider while Smithproxy keeps
-its legacy in-process signature engine. The compiled signature-pack runtime and
-the useful state model from the legacy engine will move here incrementally.
+```text
+any producer -- JSON metadata + raw bytes --> sx-siftd
+Smithproxy   -- SXBN001 -------------------> sx-siftd
+Spider       -- replay/SXBN001 ------------> sx-siftd
+```
+
+## Build
+
+Debian/Ubuntu dependencies:
+
+```sh
+sudo apt install cmake g++ pkg-config libhyperscan-dev \
+  libmicrohttpd-dev nlohmann-json3-dev
+git submodule update --init
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+Run the daemon with `build/sx-siftd`. The default endpoint is
+`http://127.0.0.1:18081/webhook`.
+
+## API
+
+An SXBN001 request is a 25-byte ASCII header, JSON metadata and an unencoded
+binary payload:
 
 ```text
-Smithproxy -- second webhook/SXBN001 --> sx-siftd
-Spider server -- replay/SXBN001 ------> sx-siftd
+SXBN001:<8 hex JSON bytes>:<8 hex payload bytes><JSON><payload>
 ```
+
+Smithproxy's existing `connection-content` schema is supported. The public API
+will also accept progressively more relaxed metadata; payload bytes remain the
+only essential input.
 
 Runtime counters are available as JSON from `GET /api/stats`. The existing
 timing section reports both runtime `engine_delay_us` (flow management and
@@ -36,5 +65,3 @@ Smithproxy and its communication broker and is therefore reported as pending.
 The bootstrap runtime currently carries 19 reviewed protocol rules derived
 from `smithproxy-signature-pack`. This remains a temporary, deliberately small
 subset until the compiled-pack loader replaces the built-in table.
-
-Default endpoint: `http://127.0.0.1:18081/webhook`.
