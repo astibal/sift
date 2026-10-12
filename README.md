@@ -68,4 +68,5 @@ embedded artifact consumed by the generic runtime matcher; C++ contains no
 individual signature definitions. Adding or changing a signature therefore
 never requires editing the engine. Python 3 with PyYAML is required when
 building the compiled pack. See [SIGNATURE_POLICY.md](SIGNATURE_POLICY.md) for
-the mandatory rules governing signature changes.
+the mandatory rules governing signature changes and [API.md](API.md) for the
+wire schema, evidence namespaces, and trust boundary.

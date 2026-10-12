@@ -176,21 +176,31 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
 
     return std::all_of(rule.clauses.begin(), rule.clauses.end(),
                        [&](const nlohmann::json& clause) {
-        const auto side_text = clause.value("side", "E");
-        const auto side = side_text.empty() ? 'E' : side_text.front();
         const auto op = clause.at("op").get<std::string>();
-        if (side == 'H') {
+        if (auto field_name = clause.find("field"); field_name != clause.end()) {
+            const auto found = flow.fields.find(field_name->get<std::string>());
+            if (found == flow.fields.end()) return false;
+            const auto expected = values(clause);
+            if (op == "equals_any") {
+                return std::any_of(found->second.begin(), found->second.end(),
+                                   [&expected](const auto& observed) {
+                    return std::find(expected.begin(), expected.end(), observed) != expected.end();
+                });
+            }
             if (op != "domain_suffix_any")
-                throw std::runtime_error("unsupported hostname signature operation: " + op);
-            const auto domains = values(clause);
-            return std::any_of(flow.hostnames.begin(), flow.hostnames.end(),
+                throw std::runtime_error("unsupported field signature operation: " + op);
+            const auto& domains = expected;
+            return std::any_of(found->second.begin(), found->second.end(),
                                [&domains](const auto& hostname) {
                 return std::any_of(domains.begin(), domains.end(),
                                    [&hostname](const auto& domain) {
-                                       return domain_is(hostname, domain);
+                                       return domain_is(normalized_hostname(hostname),
+                                                        normalized_hostname(domain));
                                    });
             });
         }
+        const auto side_text = clause.value("side", "E");
+        const auto side = side_text.empty() ? 'E' : side_text.front();
         if (side == 'L') return stream_matches(clause, flow.left);
         if (side == 'R') return stream_matches(clause, flow.right);
         return stream_matches(clause, flow.left) || stream_matches(clause, flow.right);
@@ -241,9 +251,11 @@ Verdict Runtime::inspect(const std::string_view session, const char side,
     if (inserted) ++flows_seen_;
     const auto is_right = side == 'R' || side == 'w';
     auto& flow = flow_it->second;
-    for (const auto& hostname : metadata.hostnames) {
-        auto normalized = normalized_hostname(hostname);
-        if (!normalized.empty()) flow.hostnames.emplace(std::move(normalized));
+    for (const auto& [field, values] : metadata.fields) {
+        auto& stored = flow.fields[field];
+        for (const auto& value : values) {
+            if (!value.empty()) stored.emplace(value);
+        }
     }
     auto& stream = is_right ? flow.right : flow.left;
     auto*& scanner = is_right ? flow.right_scanner : flow.left_scanner;

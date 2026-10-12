@@ -9,6 +9,12 @@ signatures:
   - name: protocol.http2.prior-knowledge
     match: [{side: L, op: prefix, value: "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"}]
     candidates: [{side: L, regex: '^PRI \* HTTP/2\.0\x0d\x0a\x0d\x0aSM\x0d\x0a\x0d\x0a'}]
+  - name: protocol.http2
+    match: [{field: flow.http2, op: equals_any, values: ["true"]}]
+  - name: protocol.http1
+    match: [{field: flow.http1, op: equals_any, values: ["true"]}]
+  - name: protocol.http3
+    match: [{field: flow.http3, op: equals_any, values: ["true"]}]
   - name: security.tls.client-hello
     match: [{side: L, op: tls_handshake, type: 1}]
     candidates: [{side: L, regex: '^\x16\x03[\x00-\x0f]..\x01'}]
@@ -58,6 +64,6 @@ signatures:
     match: [{side: L, op: prefix_any, values: ["get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ", "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r", flush_all]}]
     candidates: [{side: L, regex: '^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) '}, {side: L, regex: '^(stats|version)\x0d'}, {side: L, regex: '^flush_all'}]
   - name: app.youtube.video
-    match: [{side: H, op: domain_suffix_any, values: [googlevideo.com]}]
+    match: [{field: flow.tls.sni, op: domain_suffix_any, values: [googlevideo.com]}]
   - name: app.youtube
-    match: [{side: H, op: domain_suffix_any, values: [youtube.com, youtube-nocookie.com, youtu.be, ytimg.com, youtubei.googleapis.com]}]
+    match: [{field: flow.tls.sni, op: domain_suffix_any, values: [youtube.com, youtube-nocookie.com, youtu.be, ytimg.com, youtubei.googleapis.com]}]

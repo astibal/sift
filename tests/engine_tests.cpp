@@ -43,7 +43,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 21,
+    check(live_stats.at("signatures").at("loaded") == 24,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");
@@ -89,13 +89,30 @@ int main() {
                     "protocol.ajp13.ping"), "AJP ping did not match");
     check(has_match(runtime.inspect("memcache", 'L', "get key\r\n"),
                     "protocol.memcached.ascii"), "memcached ASCII did not match");
-    sift::InspectionMetadata youtube_video_metadata{{"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}};
+    sift::InspectionMetadata youtube_video_metadata{{
+        {"flow.tls.sni", {"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}}}};
     check(has_match(runtime.inspect("youtube-video", 'L', "payload", youtube_video_metadata),
                     "app.youtube.video"), "YouTube video hostname did not match");
     check(runtime.inspect("youtube-video", 'R', "more", youtube_video_metadata).matches.empty(),
           "YouTube video application matched more than once per flow");
-    sift::InspectionMetadata unrelated_metadata{{"notgooglevideo.com"}};
+    sift::InspectionMetadata unrelated_metadata{{
+        {"flow.tls.sni", {"notgooglevideo.com"}}}};
     check(!has_match(runtime.inspect("unrelated", 'L', "payload", unrelated_metadata),
                      "app.youtube.video"), "YouTube suffix matched without a domain boundary");
+    sift::InspectionMetadata http2_metadata{{{"flow.http2", {"true"}}}};
+    check(has_match(runtime.inspect("requestor-h2", 'L', "payload", http2_metadata),
+                    "protocol.http2"), "requestor HTTP/2 confirmation did not match");
+    sift::InspectionMetadata http1_metadata{{
+        {"flow.http1", {"true"}},
+        {"flow.http1.host", {"www.example.test"}},
+        {"flow.http1.url", {"https://www.example.test/index.html"}}}};
+    check(has_match(runtime.inspect("requestor-h1", 'L', "payload", http1_metadata),
+                    "protocol.http1"), "requestor HTTP/1 confirmation did not match");
+    sift::InspectionMetadata http3_metadata{{
+        {"flow.http3", {"true"}},
+        {"flow.http3.authority", {"www.example.test"}},
+        {"flow.http3.path", {"/index.html"}}}};
+    check(has_match(runtime.inspect("requestor-h3", 'L', "payload", http3_metadata),
+                    "protocol.http3"), "requestor HTTP/3 confirmation did not match");
     return failures == 0 ? 0 : 1;
 }

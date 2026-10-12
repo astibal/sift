@@ -28,7 +28,7 @@ struct Verdict {
 };
 
 struct InspectionMetadata {
-    std::vector<std::string> hostnames;
+    std::unordered_map<std::string, std::vector<std::string>> fields;
 };
 
 class Runtime {
@@ -60,7 +60,7 @@ private:
         std::string left;
         std::string right;
         std::unordered_set<std::string> matches;
-        std::unordered_set<std::string> hostnames;
+        std::unordered_map<std::string, std::unordered_set<std::string>> fields;
         std::unordered_set<std::size_t> candidates;
         hs_stream_t* left_scanner{};
         hs_stream_t* right_scanner{};

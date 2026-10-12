@@ -116,17 +116,16 @@ private:
         const auto side_text = info.value("side", "L");
         const auto side = side_text.empty() ? 'L' : side_text.front();
         InspectionMetadata metadata;
-        if (auto sni = info.find("sni"); sni != info.end() && sni->is_string()) {
-            metadata.hostnames.push_back(sni->get<std::string>());
-        }
-        if (auto hostname = info.find("hostname");
-            hostname != info.end() && hostname->is_string()) {
-            metadata.hostnames.push_back(hostname->get<std::string>());
-        }
-        if (auto hostnames = info.find("hostnames");
-            hostnames != info.end() && hostnames->is_array()) {
-            for (const auto& hostname : *hostnames) {
-                if (hostname.is_string()) metadata.hostnames.push_back(hostname.get<std::string>());
+        for (auto item = info.begin(); item != info.end(); ++item) {
+            if (!item.key().starts_with("flow.")) continue;
+            auto& values = metadata.fields[item.key()];
+            if (item->is_string()) values.push_back(item->get<std::string>());
+            else if (item->is_boolean()) values.push_back(item->get<bool>() ? "true" : "false");
+            else if (item->is_array()) {
+                for (const auto& value : *item) {
+                    if (value.is_string()) values.push_back(value.get<std::string>());
+                    else if (value.is_boolean()) values.push_back(value.get<bool>() ? "true" : "false");
+                }
             }
         }
         auto reply = verdict_json(runtime_.inspect(

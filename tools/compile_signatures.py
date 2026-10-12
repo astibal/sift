@@ -7,7 +7,7 @@ import yaml
 
 ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "hex_at", "tls_handshake",
-    "line_prefix_within", "domain_suffix_any",
+    "line_prefix_within", "domain_suffix_any", "equals_any",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
 
@@ -33,8 +33,10 @@ def main() -> None:
         for clause in rule["match"]:
             if not isinstance(clause, dict) or clause.get("op") not in ALLOWED_OPERATIONS:
                 raise SystemExit(f"signature {rule['name']} has an unsupported match operation")
-            if clause.get("side", "E") not in ALLOWED_SIDES:
+            if "field" not in clause and clause.get("side", "E") not in ALLOWED_SIDES:
                 raise SystemExit(f"signature {rule['name']} has an unsupported side")
+            if "field" in clause and not isinstance(clause["field"], str):
+                raise SystemExit(f"signature {rule['name']} has an invalid field name")
             if "value" not in clause and "values" not in clause and clause["op"] != "tls_handshake":
                 raise SystemExit(f"signature {rule['name']} clause has no value")
         if rule.get("candidates") is not None and not isinstance(rule["candidates"], list):

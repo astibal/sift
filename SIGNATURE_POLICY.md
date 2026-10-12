@@ -41,3 +41,8 @@ A signature change must:
    `app.youtube.video`.
 
 Generated artifacts are build products. YAML is the authoritative source.
+
+Rules may consume requestor-provided `flow.*` observations defined by
+[API.md](API.md), but must name each accepted field explicitly. Flow metadata
+must never be silently treated as raw-payload evidence, and requestor-provided
+`payload.*` fields are reserved and ignored.
