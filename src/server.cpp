@@ -98,7 +98,7 @@ private:
         if (action == "info") {
             return {{"action", "info-response"},
                     {"protocols", {{"connection-content", {"sxbn-001"}}}},
-                    {"service", "sx-siftd"}};
+                    {"service", "siftd"}};
         }
         if (action == "connection-stop") {
             runtime_.close(event.value("id", ""));

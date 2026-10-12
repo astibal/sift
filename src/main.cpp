@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--help") {
-            std::cout << "Usage: sx-siftd [--bind ADDRESS] [--port N] [--path PATH]\n";
+            std::cout << "Usage: siftd [--bind ADDRESS] [--port N] [--path PATH]\n";
             return 0;
         }
         if (arg == "--bind" && i + 1 < argc) config.bind = argv[++i];
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, stop_handler);
     std::signal(SIGTERM, stop_handler);
     sift::Runtime runtime;
-    std::cout << "sx-siftd listening on http://" << config.bind << ':' << config.port
+    std::cout << "siftd listening on http://" << config.bind << ':' << config.port
               << config.path << '\n';
     return sift::run_server(config, runtime, stop_requested);
 }

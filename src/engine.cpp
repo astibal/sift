@@ -325,7 +325,7 @@ nlohmann::json Runtime::status() const {
     const auto average_total_delay = total_delay_samples_ == 0 ? 0.0
         : ns_to_us(total_delay_total_ns_) / static_cast<double>(total_delay_samples_);
     return {
-        {"service", "sx-siftd"}, {"engine", "bootstrap-hyperscan"},
+        {"service", "siftd"}, {"engine", "bootstrap-hyperscan"},
         {"scanner", {{"name", "hyperscan"}, {"version", hs_version()},
                      {"mode", "stream"}, {"patterns", scan_patterns.size()},
                      {"scans", hyperscan_scans_},
@@ -369,7 +369,7 @@ nlohmann::json verdict_json(const Verdict& verdict) {
                            {"end", match.end}});
     }
     return {{"action", verdict.action}, {"matches", std::move(matches)},
-            {"engine", "sx-siftd"}};
+            {"engine", "siftd"}};
 }
 
 } // namespace sift

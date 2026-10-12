@@ -18,16 +18,16 @@ target_include_directories(sift_core PUBLIC include)
 target_link_libraries(sift_core PUBLIC nlohmann_json::nlohmann_json PkgConfig::HYPERSCAN)
 target_compile_options(sift_core PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
 
-add_executable(sx-siftd
+add_executable(siftd
     src/main.cpp
     src/server.cpp
 )
-target_include_directories(sx-siftd PRIVATE
+target_include_directories(siftd PRIVATE
     external/lmhpp/include
 )
-target_link_libraries(sx-siftd PRIVATE
+target_link_libraries(siftd PRIVATE
     sift_core PkgConfig::MICROHTTPD nlohmann_json::nlohmann_json)
-target_compile_options(sx-siftd PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+target_compile_options(siftd PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -36,7 +36,7 @@ if(BUILD_TESTING)
     add_test(NAME sift_tests COMMAND sift_tests)
 endif()
 
-install(TARGETS sift_core sx-siftd
+install(TARGETS sift_core siftd
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin)
 install(DIRECTORY include/ DESTINATION include)

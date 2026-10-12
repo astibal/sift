@@ -4,7 +4,7 @@ Sift is a stateful streaming payload identification engine. Give it bytes and
 it returns the protocol and content shapes it can establish from those bytes.
 Network addresses and ports are optional hints, never primary evidence.
 
-`sx-siftd` exposes the engine over a deliberately small HTTP/SXBN001 API. It
+`siftd` exposes the engine over a deliberately small HTTP/SXBN001 API. It
 accepts bidirectional stream chunks, keeps per-flow state and returns a verdict.
 Sift requires Intel Hyperscan (`libhyperscan-dev` on Debian/Ubuntu); there is no
 silent `std::regex` fallback.
@@ -15,9 +15,9 @@ Hyperscan emits candidate rule IDs and the stateful matchers perform the final
 multi-direction and structural checks.
 
 ```text
-any producer -- JSON metadata + raw bytes --> sx-siftd
-Smithproxy   -- SXBN001 -------------------> sx-siftd
-Spider       -- replay/SXBN001 ------------> sx-siftd
+any producer -- JSON metadata + raw bytes --> siftd
+Smithproxy   -- SXBN001 -------------------> siftd
+Spider       -- replay/SXBN001 ------------> siftd
 ```
 
 ## Build
@@ -33,7 +33,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Run the daemon with `build/sx-siftd`. The default endpoint is
+Run the daemon with `build/siftd`. The default endpoint is
 `http://127.0.0.1:18081/webhook`.
 
 ## API
