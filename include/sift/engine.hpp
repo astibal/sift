@@ -14,6 +14,8 @@
 #include <nlohmann/json.hpp>
 #include <hs/hs.h>
 
+#include <sift/identity.hpp>
+
 namespace sift {
 
 struct Match {
@@ -38,10 +40,14 @@ public:
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
 
+    [[nodiscard]] Verdict inspect(const FlowKey& key, char side,
+                                  std::string_view payload,
+                                  const InspectionMetadata& metadata = {});
     [[nodiscard]] Verdict inspect(std::string_view session, char side,
                                   std::string_view payload,
                                   const InspectionMetadata& metadata = {});
     void record_total_delay(std::chrono::nanoseconds elapsed);
+    void close(const FlowKey& key);
     void close(std::string_view session);
     [[nodiscard]] nlohmann::json status() const;
 
@@ -74,7 +80,10 @@ private:
     mutable std::mutex lock_;
     std::vector<Rule> rules_;
     std::vector<ScanPattern> scan_patterns_;
-    std::unordered_map<std::string, Flow> flows_;
+    std::unordered_map<FlowKey, Flow, FlowKeyHash> flows_;
+    std::unordered_set<std::string> tenants_seen_;
+    std::unordered_set<std::string> instances_seen_;
+    std::uint64_t ip_fallback_requests_{};
     hs_database_t* left_database_{};
     hs_database_t* right_database_{};
     hs_scratch_t* scratch_{};

@@ -23,6 +23,52 @@ bool has_match(const sift::Verdict& verdict, const std::string_view signature) {
 }
 
 int main() {
+    const auto declared_identity = sift::resolve_identity(
+        nlohmann::json{{"identity", {{"tenant", "acme"}, {"instance", "edge-a"}}},
+                       {"source", "legacy"}},
+        "192.0.2.10");
+    check(declared_identity.tenant == "acme", "declared tenant was ignored");
+    check(declared_identity.instance == "edge-a", "declared instance was ignored");
+    check(!declared_identity.ip_fallback, "declared identity marked as fallback");
+
+    const auto legacy_identity = sift::resolve_identity(
+        nlohmann::json{{"source", "legacy-edge"}}, "192.0.2.11");
+    check(legacy_identity.tenant == "default", "legacy tenant default is wrong");
+    check(legacy_identity.instance == "legacy-edge", "legacy source was ignored");
+
+    const auto fallback_identity = sift::resolve_identity(
+        nlohmann::json::object(), "192.0.2.12");
+    check(fallback_identity.instance == "192.0.2.12", "peer IP fallback is wrong");
+    check(fallback_identity.ip_fallback, "peer IP fallback was not reported");
+
+    sift::Runtime tenant_runtime;
+    const sift::FlowKey tenant_a{{"default", "edge-a", false}, "shared-session"};
+    const sift::FlowKey tenant_b{{"default", "edge-b", false}, "shared-session"};
+    const sift::FlowKey tenant_c{{"tenant-c", "edge-a", false}, "shared-session"};
+    check(tenant_runtime.inspect(tenant_a, 'L', "PRI * HTTP/2.0\r\n").matches.empty(),
+          "first tenant fragment matched too early");
+    check(tenant_runtime.inspect(tenant_b, 'L', "\r\nSM\r\n\r\n").matches.empty(),
+          "flow state leaked between producer instances");
+    check(tenant_runtime.inspect(tenant_c, 'L', "\r\nSM\r\n\r\n").matches.empty(),
+          "flow state leaked between tenants");
+    check(has_match(tenant_runtime.inspect(tenant_a, 'L', "\r\nSM\r\n\r\n"),
+                    "protocol.http2.prior-knowledge"),
+          "tenant-scoped fragmented flow did not match");
+    tenant_runtime.close(tenant_a);
+    check(tenant_runtime.status().at("flows").at("active") == 2,
+          "closing one tenant removed another tenant's flow");
+    check(tenant_runtime.status().at("identity").at("tenants_seen") == 2,
+          "tenant identity stats are wrong");
+    check(tenant_runtime.status().at("identity").at("instances_seen") == 3,
+          "producer instance stats are wrong");
+
+    sift::Runtime fallback_runtime;
+    const auto fallback_verdict = fallback_runtime.inspect(
+        sift::FlowKey{fallback_identity, "flow"}, 'L', "payload");
+    check(fallback_verdict.action == "accept", "fallback flow was not inspected");
+    check(fallback_runtime.status().at("identity").at("ip_fallback_requests") == 1,
+          "peer IP fallback request was not counted");
+
     sift::Runtime runtime;
     auto first = runtime.inspect("flow-1", 'L', "PRI * HTTP/2.0\r\n");
     check(first.matches.empty(), "fragment must remain pending");

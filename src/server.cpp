@@ -1,14 +1,21 @@
 #include <sift/engine_server.hpp>
 
 #include <sift/engine.hpp>
+#include <sift/identity.hpp>
 #include <sift/sxbn.hpp>
 
 #include <lmhttpd.hpp>
 #include <microhttpd.h>
 
+#include <arpa/inet.h>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <netinet/in.h>
+#include <string>
 #include <string_view>
+#include <sys/socket.h>
 
 namespace sift {
 namespace {
@@ -17,6 +24,38 @@ struct RequestState final : lmh::ConnectionState {
     explicit RequestState(lmh::Controller& controller) : ConnectionState(controller) {}
     bool too_large{};
 };
+
+std::string peer_ip(MHD_Connection* connection) {
+    const auto* info = MHD_get_connection_info(
+        connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+
+    if(info == nullptr || info->client_addr == nullptr) return {};
+
+    const auto* address = info->client_addr;
+    char text[INET6_ADDRSTRLEN]{};
+
+    if(address->sa_family == AF_INET) {
+        const auto* ipv4 = reinterpret_cast<const sockaddr_in*>(address);
+        return inet_ntop(AF_INET, &ipv4->sin_addr, text, sizeof(text)) == nullptr
+            ? std::string{} : std::string(text);
+    }
+
+    if(address->sa_family == AF_INET6) {
+        const auto* ipv6 = reinterpret_cast<const sockaddr_in6*>(address);
+        return inet_ntop(AF_INET6, &ipv6->sin6_addr, text, sizeof(text)) == nullptr
+            ? std::string{} : std::string(text);
+    }
+
+    return {};
+}
+
+std::string string_field(const nlohmann::json& object, const char* name) {
+    const auto found = object.find(name);
+
+    if(found == object.end() || !found->is_string()) return {};
+
+    return found->get<std::string>();
+}
 
 class Controller final : public lmh::Controller {
 public:
@@ -62,7 +101,7 @@ public:
                    std::string_view(url) == "/api/stats") {
             reply = runtime_.status();
         } else {
-            reply = process(state.request_data, status);
+            reply = process(state.request_data, peer_ip(connection), status);
         }
         const auto body = reply.dump();
         auto* response = MHD_create_response_from_buffer(
@@ -76,7 +115,8 @@ public:
     }
 
 private:
-    nlohmann::json process(const std::string& body, unsigned& status) {
+    nlohmann::json process(const std::string& body, const std::string_view remote_ip,
+                           unsigned& status) {
         const auto started = std::chrono::steady_clock::now();
         nlohmann::json event;
         std::string payload;
@@ -98,15 +138,27 @@ private:
         if (action == "info") {
             return {{"action", "info-response"},
                     {"protocols", {{"connection-content", {"sxbn-001"}}}},
+                    {"identity", {{"version", 1},
+                                  {"flow_key", {"tenant", "instance", "session"}},
+                                  {"fallback", "peer-ip"}}},
                     {"service", "siftd"}};
         }
+
+        const auto identity = resolve_identity(event, remote_ip);
+        const auto event_session = string_field(event, "id");
+
         if (action == "connection-stop") {
-            runtime_.close(event.value("id", ""));
+            if(!event_session.empty()) {
+                runtime_.close(FlowKey{identity, event_session});
+            }
+
             return nlohmann::json::object();
         }
+
         if (action != "connection-content") {
             return nlohmann::json::object();
         }
+
         const auto details = event.value("details", nlohmann::json::object());
         const auto info = details.value("info", nlohmann::json::object());
         if (payload.empty() && info.contains("content")) {
@@ -115,6 +167,15 @@ private:
         }
         const auto side_text = info.value("side", "L");
         const auto side = side_text.empty() ? 'L' : side_text.front();
+        auto session = event_session;
+
+        if(session.empty()) session = string_field(info, "session");
+
+        const auto anonymous = session.empty();
+        if(anonymous) {
+            session = "anonymous-" + std::to_string(++anonymous_sequence_);
+        }
+
         InspectionMetadata metadata;
         for (auto item = info.begin(); item != info.end(); ++item) {
             if (!item.key().starts_with("flow.")) continue;
@@ -128,14 +189,18 @@ private:
                 }
             }
         }
-        auto reply = verdict_json(runtime_.inspect(
-            info.value("session", event.value("id", "")), side, payload, metadata));
+        const FlowKey key{identity, std::move(session)};
+        auto reply = verdict_json(runtime_.inspect(key, side, payload, metadata));
+
+        if(anonymous) runtime_.close(key);
+
         runtime_.record_total_delay(std::chrono::steady_clock::now() - started);
         return reply;
     }
 
     const ServerConfig& config_;
     Runtime& runtime_;
+    std::atomic_uint64_t anonymous_sequence_{};
 };
 
 } // namespace

@@ -242,13 +242,22 @@ void Runtime::close_scanners(Flow& flow) {
     }
 }
 
-Verdict Runtime::inspect(const std::string_view session, const char side,
+Verdict Runtime::inspect(const FlowKey& key, const char side,
                          const std::string_view payload,
                          const InspectionMetadata& metadata) {
     const auto engine_started = std::chrono::steady_clock::now();
     std::scoped_lock guard(lock_);
-    auto [flow_it, inserted] = flows_.try_emplace(std::string(session));
+    auto [flow_it, inserted] = flows_.try_emplace(key);
+
     if (inserted) ++flows_seen_;
+
+    tenants_seen_.insert(key.source.tenant);
+    instances_seen_.insert(key.source.tenant + "\n" +
+                           (key.source.ip_fallback ? "peer-ip\n" : "declared\n") +
+                           key.source.instance);
+
+    if(key.source.ip_fallback) ++ip_fallback_requests_;
+
     const auto is_right = side == 'R' || side == 'w';
     auto& flow = flow_it->second;
     for (const auto& [field, values] : metadata.fields) {
@@ -320,6 +329,13 @@ Verdict Runtime::inspect(const std::string_view session, const char side,
     return verdict;
 }
 
+Verdict Runtime::inspect(const std::string_view session, const char side,
+                         const std::string_view payload,
+                         const InspectionMetadata& metadata) {
+    return inspect(FlowKey{{"default", "local", false}, std::string(session)},
+                   side, payload, metadata);
+}
+
 void Runtime::record_total_delay(const std::chrono::nanoseconds elapsed) {
     const auto value = static_cast<std::uint64_t>(elapsed.count());
     std::scoped_lock guard(lock_);
@@ -331,13 +347,19 @@ void Runtime::record_total_delay(const std::chrono::nanoseconds elapsed) {
     append_timing_sample(total_delay_recent_ns_, value);
 }
 
-void Runtime::close(const std::string_view session) {
+void Runtime::close(const FlowKey& key) {
     std::scoped_lock guard(lock_);
-    const auto found = flows_.find(std::string(session));
+    const auto found = flows_.find(key);
+
     if (found == flows_.end()) return;
+
     close_scanners(found->second);
     flows_.erase(found);
     ++flows_closed_;
+}
+
+void Runtime::close(const std::string_view session) {
+    close(FlowKey{{"default", "local", false}, std::string(session)});
 }
 
 nlohmann::json Runtime::status() const {
@@ -365,6 +387,9 @@ nlohmann::json Runtime::status() const {
                      {"scans", hyperscan_scans_},
                      {"candidates", hyperscan_candidates_}}},
         {"uptime_ms", uptime},
+        {"identity", {{"tenants_seen", tenants_seen_.size()},
+                      {"instances_seen", instances_seen_.size()},
+                      {"ip_fallback_requests", ip_fallback_requests_}}},
         {"flows", {{"active", flows_.size()}, {"seen", flows_seen_},
                    {"closed", flows_closed_}}},
         {"traffic", {{"payloads", payloads_}, {"bytes", bytes_},

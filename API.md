@@ -9,10 +9,14 @@ requestor's observation of the surrounding flow.
 ```json
 {
   "action": "connection-content",
-  "id": "request-id",
+  "id": "stable-flow-id",
+  "identity": {
+    "tenant": "default",
+    "instance": "helmut-edge-01"
+  },
   "details": {
     "info": {
-      "session": "stable-flow-id",
+      "session": "human-readable-flow-label",
       "side": "L",
       "payload_layer": "tcp",
       "flow.tls.sni": "rr1---sn.example.googlevideo.com",
@@ -29,6 +33,51 @@ requestor's observation of the surrounding flow.
 
 The JSON is followed by the payload declared by the SXBN001 envelope. Missing
 optional fields do not invalidate a request.
+
+## Multitenant flow identity
+
+Flow state is isolated by the tuple:
+
+```text
+(identity.tenant, identity.instance, id || details.info.session)
+```
+
+`identity.tenant` defaults to `default`. `identity.instance` is the stable
+producer identity and should be configured explicitly by every requestor.
+For compatibility, a non-empty top-level string `source` is accepted as the
+instance identity. If neither value is present, Sift uses the numeric peer IP
+address. The IP fallback is intentionally visible through
+`identity.ip_fallback_requests` in `/api/stats`.
+
+Declared and peer-IP identities occupy distinct internal namespaces. An
+explicit instance string that happens to look like the peer IP therefore
+cannot merge with a legacy IP-fallback flow.
+
+The peer IP is only a collision-prevention fallback, not an authentication
+mechanism. Deployments with mutually untrusted tenants must bind the declared
+identity to transport authentication or an API credential.
+
+`id` is the authoritative machine flow identifier shared by content and
+`connection-stop` events. The human-readable `details.info.session` value is
+used as a compatibility fallback only when `id` is absent.
+
+Requests without both `id` and `details.info.session` are inspected as
+one-request anonymous flows and immediately discarded. They can classify one
+payload but cannot accumulate stream state or collide with another anonymous
+request.
+
+Smithproxy sends the explicit identity fields. Its corresponding settings are:
+
+```text
+settings.webhook.sift_tenant_id
+settings.webhook.sift_instance_id
+```
+
+An empty Smithproxy instance setting falls back to its configured webhook
+`hostid`, and then to the local hostname. This fallback happens at the
+requestor, so Sift still receives an explicit instance identity. Smithproxy
+snapshots its Sift identity for the lifetime of the process; changing either
+identity setting requires a restart and cannot split an active flow.
 
 ## Evidence and trust
 

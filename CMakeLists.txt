@@ -32,6 +32,7 @@ add_custom_target(sift_signature_pack DEPENDS ${SIFT_COMPILED_SIGNATURES})
 add_library(sift_core
     ${SIFT_COMPILED_SIGNATURES}
     src/engine.cpp
+    src/identity.cpp
     src/sxbn.cpp
 )
 add_dependencies(sift_core sift_signature_pack)
