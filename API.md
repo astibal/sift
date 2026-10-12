@@ -79,11 +79,10 @@ the actual parsed components. Fields are omitted until the requestor has a
 complete parsed request.
 
 Smithproxy emits the TLS observation and the HTTP/1.x and HTTP/2 observations
-available from its application inspector. Its HTTP/3 capture path already
-decodes QPACK header records, but does not yet submit content requests through
-the Sift webhook path; `flow.http3.*` is therefore part of the canonical wire
-schema but is emitted only by requestors that actually provide those parsed
-observations.
+available from its application inspector. Its HTTP/3 path submits decoded
+initial QPACK request fields as a metadata-only `connection-content` event with
+`payload_layer: http3.headers`. Response headers and request trailers do not
+assert request metadata.
 
 ## Rule binding
 
