@@ -181,19 +181,18 @@ std::vector<TlvMatch> infer_tlv_candidates(std::string_view bytes,
         bytes = bytes.substr(0, options.max_probe_bytes);
     }
 
-    constexpr std::array<std::size_t, 3> widths{1, 2, 4};
+    constexpr std::array<std::size_t, 3> field_widths{1, 2, 4};
+    constexpr std::array<std::size_t, 2> length_widths{2, 4};
     constexpr std::array<ByteOrder, 2> orders{ByteOrder::little, ByteOrder::big};
     constexpr std::array<LengthMode, 2> modes{LengthMode::value, LengthMode::record};
     std::vector<Evaluation> matches;
     const auto max_offset = std::min(options.max_magic_bytes, bytes.size() - 1);
 
     for(std::size_t offset = 0; offset <= max_offset; ++offset) {
-        for(const auto field_width : widths) {
+        for(const auto field_width : field_widths) {
             for(std::size_t field_count = 0; field_count <= 3; ++field_count) {
-                for(const auto length_width : widths) {
+                for(const auto length_width : length_widths) {
                     for(const auto order : orders) {
-                        if(length_width == 1 && order == ByteOrder::big) continue;
-
                         for(const auto mode : modes) {
                             const Layout layout{
                                 offset, field_width, field_count,

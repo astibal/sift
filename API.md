@@ -98,6 +98,10 @@ last record ends exactly at the end of all bytes currently accumulated for the
 probe. An incomplete final record is pending evidence, not a partial match;
 Sift retries it when more bytes arrive.
 
+Length fields are restricted to two or four bytes. One-byte lengths are too
+likely to produce accidental jump chains and are deliberately not inferred;
+one-byte unknown fields (`1x`) remain supported.
+
 ## Multitenant flow identity
 
 Flow state is isolated by the tuple:

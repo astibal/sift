@@ -30,6 +30,13 @@ bool has_candidate(const std::vector<sift::structure::TlvMatch>& candidates,
                        });
 }
 
+bool has_one_byte_length(const std::vector<sift::structure::TlvMatch>& candidates) {
+    return std::any_of(candidates.begin(), candidates.end(),
+                       [](const sift::structure::TlvMatch& match) {
+                           return match.signature.find(".1l.") != std::string::npos;
+                       });
+}
+
 void append_u16le(std::string& output, const std::uint16_t value) {
     output.push_back(static_cast<char>(value & 0xffU));
     output.push_back(static_cast<char>(value >> 8U));
@@ -59,6 +66,8 @@ int main() {
           "expected TLV structure candidate is missing");
     check(has_candidate(tlv, "protocol.struct.tlv.16m.1x.1x.2l.le.lv"),
           "equally valid TLV structure ambiguity was hidden");
+    check(!has_one_byte_length(tlv),
+          "unsupported one-byte length candidate was emitted");
     check(sift::structure::infer_tlv_candidates(
               std::string_view(tlv_payload).substr(0, tlv_payload.size() - 3)).empty(),
           "incomplete final TLV record produced a match");
