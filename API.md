@@ -19,6 +19,9 @@ requestor's observation of the surrounding flow.
       "session": "human-readable-flow-label",
       "side": "L",
       "payload_layer": "tcp",
+      "L7_payload_start": [120, 256],
+      "L7_payload_end": [180, 310],
+      "L7_encoding": ["gzip", ""],
       "flow.tls.sni": "rr1---sn.example.googlevideo.com",
       "flow.http2": true,
       "flow.http2.method": "GET",
@@ -33,6 +36,67 @@ requestor's observation of the surrounding flow.
 
 The JSON is followed by the payload declared by the SXBN001 envelope. Missing
 optional fields do not invalidate a request.
+
+## Payload position and layer
+
+`side` and `payload_layer` say where the attached bytes were observed.
+`L7_payload_start`, `L7_payload_end`, and `L7_encoding` are parallel arrays.
+Element `i` describes one L7 user-payload range in the attached content buffer;
+the start is inclusive and the end is exclusive. Multiple ranges allow framed
+transports such as HTTP/1 chunked encoding to exclude their framing bytes.
+
+The special values defined by Smithproxy retain their meaning:
+
+```text
+[-1, -1]  L7 user-payload location is unknown
+[ 0,  0]  this content buffer positively contains no L7 user payload
+```
+
+Known non-empty ranges are bounds-checked, extracted, and concatenated in array
+order. Ranges with different `L7_encoding` values use separate inference state,
+so compressed and plain bytes are never joined. Structural inference currently
+uses only ranges with an empty encoding. Values such as `gzip` are retained but
+must be decoded by a future bounded decoder before their content is inspected.
+
+The optional `payload_stream` may distinguish multiplexed application streams.
+It may be a string or an integer. When absent, Sift also accepts
+`flow.http2.stream_id` or `flow.http3.stream_id`. Without one of these fields,
+the range arrays alone cannot distinguish interleaved HTTP/2 or HTTP/3 streams.
+
+Sift keeps structural inference state under:
+
+```text
+(tenant, instance, session, side, payload_layer, payload_stream, L7_encoding)
+```
+
+When valid L7 ranges are present, structure inference sees only their extracted
+bytes and reports `http1.payload`, `http2.payload`, `http3.payload`, or the
+generic `l7.payload` as its layer. With unknown L7 location, inference falls
+back to the complete `payload_layer` stream. A known-empty range contributes no
+bytes.
+
+Structure results use the compact namespace discussed above, for example:
+
+```json
+{
+  "signature": "protocol.struct.tlv.16m.2x.2x.2l.le.lv",
+  "begin": 16,
+  "end": 511,
+  "side": "L",
+  "payload_layer": "http2.payload",
+  "confidence": 0.91
+}
+```
+
+Here `16m` is the uninterpreted prefix length, each `2x` is an unknown two-byte
+field, `2l` is the two-byte length field, `le` is its byte order, and `lv` says
+the length counts only the value. Sift can return several candidates when the
+same record boundaries admit more than one equally plausible field layout.
+
+Structural inference succeeds only when every inferred jump is valid and the
+last record ends exactly at the end of all bytes currently accumulated for the
+probe. An incomplete final record is pending evidence, not a partial match;
+Sift retries it when more bytes arrive.
 
 ## Multitenant flow identity
 
@@ -98,6 +162,10 @@ evidence.
 Only `flow.*` string/boolean values and arrays of those values are currently
 retained by the runtime. Unknown fields are ignored. A field remains associated
 with its session until `connection-stop` closes that flow.
+
+The `payload_*` transport fields above describe the attached raw bytes. They
+are not classification assertions and are deliberately outside the reserved
+`payload.*` evidence namespace.
 
 ## Canonical flow observations
 

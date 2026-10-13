@@ -1,4 +1,5 @@
 #include <sift/engine.hpp>
+#include <sift/structure.hpp>
 
 #include <algorithm>
 #include <array>
@@ -292,16 +293,27 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
     }
 
     Verdict verdict;
-    const auto record_match = [&](const Rule& rule) {
-        flow.matches.emplace(rule.name);
-        verdict.matches.push_back({rule.name, 0, stream.empty() ? 0 : stream.size() - 1});
+    const auto record_match = [&](const std::string& signature,
+                                  const std::size_t begin,
+                                  const std::size_t end,
+                                  const double confidence = 1.0,
+                                  const bool remember = true) {
+        if(remember) flow.matches.emplace(signature);
+
+        verdict.matches.push_back({
+            signature, begin, end, is_right ? 'R' : 'L',
+            metadata.payload_layer, confidence});
         ++matches_;
-        ++signature_matches_[rule.name];
+        ++signature_matches_[signature];
     };
+
     for (const auto& rule : rules_) {
         if (rule.candidate_driven || flow.matches.contains(rule.name)) continue;
-        if (rule_matches(rule, flow)) record_match(rule);
+        if (rule_matches(rule, flow)) {
+            record_match(rule.name, 0, stream.empty() ? 0 : stream.size() - 1);
+        }
     }
+
     for (auto candidate = flow.candidates.begin(); candidate != flow.candidates.end();) {
         const auto rule_id = *candidate;
         const auto& rule = rules_.at(rule_id);
@@ -313,9 +325,82 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
             ++candidate;
             continue;
         }
-        record_match(rule);
+        record_match(rule.name, 0, stream.empty() ? 0 : stream.size() - 1);
         candidate = flow.candidates.erase(candidate);
     }
+
+    const auto inspect_structure = [&](const std::string_view bytes,
+                                       const std::string_view structure_layer,
+                                       const std::string_view encoding) {
+        const auto structure_key = std::string(1, is_right ? 'R' : 'L') + "\n" +
+            std::string(structure_layer) + "\n" + metadata.payload_stream + "\n" +
+            std::string(encoding);
+        auto structure = flow.structure_probes.find(structure_key);
+
+        if(structure == flow.structure_probes.end() && flow.structure_probes.size() < 64) {
+            structure = flow.structure_probes.emplace(
+                structure_key, Flow::StructureProbe{}).first;
+        }
+        if(structure == flow.structure_probes.end() || structure->second.done) return;
+
+        auto& probe = structure->second;
+        constexpr std::size_t max_probe_bytes = 64U * 1024U;
+        const auto available = max_probe_bytes - probe.bytes.size();
+        probe.bytes.append(bytes.data(), std::min(bytes.size(), available));
+
+        if(probe.bytes.size() >= probe.next_probe) {
+            ++structure_scans_;
+            const auto inferred = structure::infer_tlv_candidates(probe.bytes);
+
+            if(!inferred.empty()) {
+                for(const auto& candidate : inferred) {
+                    const auto end = candidate.covered_bytes == 0 ? candidate.offset
+                        : candidate.offset + candidate.covered_bytes - 1;
+                    verdict.matches.push_back({
+                        candidate.signature, candidate.offset, end,
+                        is_right ? 'R' : 'L', std::string(structure_layer),
+                        candidate.confidence});
+                    ++matches_;
+                    ++signature_matches_[candidate.signature];
+                    ++structure_matches_;
+                }
+
+                probe.done = true;
+            } else if(probe.next_probe >= max_probe_bytes) {
+                probe.done = true;
+            } else {
+                probe.next_probe = std::min(
+                    max_probe_bytes, probe.bytes.size() + 1);
+            }
+        }
+    };
+
+    if(metadata.l7_payload_known) {
+        std::unordered_map<std::string, std::string> l7_bytes;
+
+        for(const auto& range : metadata.l7_payload_ranges) {
+            if(range.begin > payload.size() || range.end > payload.size()) continue;
+
+            l7_bytes[range.encoding].append(
+                payload.data() + range.begin, range.end - range.begin);
+        }
+
+        auto l7_layer = std::string{"l7.payload"};
+        if(metadata.fields.contains("flow.http3")) l7_layer = "http3.payload";
+        else if(metadata.fields.contains("flow.http2")) l7_layer = "http2.payload";
+        else if(metadata.fields.contains("flow.http1")) l7_layer = "http1.payload";
+
+        for(const auto& [encoding, bytes] : l7_bytes) {
+            if(!encoding.empty()) continue;
+
+            inspect_structure(bytes, l7_layer, encoding);
+        }
+    } else {
+        const auto layer = metadata.payload_layer.empty()
+            ? std::string_view{"tcp"} : std::string_view{metadata.payload_layer};
+        inspect_structure(payload, layer, {});
+    }
+
     if (!verdict.matches.empty()) ++matched_payloads_;
     ++accepted_;
     const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -369,6 +454,10 @@ nlohmann::json Runtime::status() const {
         const auto found = signature_matches_.find(rule.name);
         signatures[rule.name] = found == signature_matches_.end() ? 0 : found->second;
     }
+
+    for(const auto& [name, count] : signature_matches_) {
+        if(!signatures.contains(name)) signatures[name] = count;
+    }
     const auto uptime = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started_).count();
     const auto average_payload = payloads_ == 0 ? 0.0
@@ -386,6 +475,9 @@ nlohmann::json Runtime::status() const {
                      {"mode", "stream"}, {"patterns", scan_patterns_.size()},
                      {"scans", hyperscan_scans_},
                      {"candidates", hyperscan_candidates_}}},
+        {"structure", {{"scanner", "length-framing-inference"},
+                       {"scans", structure_scans_},
+                       {"matches", structure_matches_}}},
         {"uptime_ms", uptime},
         {"identity", {{"tenants_seen", tenants_seen_.size()},
                       {"instances_seen", instances_seen_.size()},
@@ -425,7 +517,9 @@ nlohmann::json verdict_json(const Verdict& verdict) {
     auto matches = nlohmann::json::array();
     for (const auto& match : verdict.matches) {
         matches.push_back({{"signature", match.signature}, {"begin", match.begin},
-                           {"end", match.end}});
+                           {"end", match.end}, {"side", std::string(1, match.side)},
+                           {"payload_layer", match.payload_layer},
+                           {"confidence", match.confidence}});
     }
     return {{"action", verdict.action}, {"matches", std::move(matches)},
             {"engine", "siftd"}};

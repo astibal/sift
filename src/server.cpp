@@ -57,6 +57,17 @@ std::string string_field(const nlohmann::json& object, const char* name) {
     return found->get<std::string>();
 }
 
+std::string identifier_field(const nlohmann::json& object, const char* name) {
+    const auto found = object.find(name);
+
+    if(found == object.end()) return {};
+    if(found->is_string()) return found->get<std::string>();
+    if(found->is_number_unsigned()) return std::to_string(found->get<std::uint64_t>());
+    if(found->is_number_integer()) return std::to_string(found->get<std::int64_t>());
+
+    return {};
+}
+
 class Controller final : public lmh::Controller {
 public:
     Controller(const ServerConfig& config, Runtime& runtime)
@@ -177,6 +188,63 @@ private:
         }
 
         InspectionMetadata metadata;
+        metadata.payload_layer = string_field(info, "payload_layer");
+        if(metadata.payload_layer.empty()) metadata.payload_layer = "tcp";
+        metadata.payload_stream = identifier_field(info, "payload_stream");
+
+        const auto starts = info.find("L7_payload_start");
+        const auto ends = info.find("L7_payload_end");
+        const auto encodings = info.find("L7_encoding");
+        if(starts != info.end() && ends != info.end() &&
+           starts->is_array() && ends->is_array() && starts->size() == ends->size()) {
+            metadata.l7_payload_known = true;
+
+            for(std::size_t index = 0; index < starts->size(); ++index) {
+                if(!(*starts)[index].is_number_integer() ||
+                   !(*ends)[index].is_number_integer()) {
+                    metadata.l7_payload_known = false;
+                    metadata.l7_payload_ranges.clear();
+                    break;
+                }
+
+                const auto begin = (*starts)[index].get<std::int64_t>();
+                const auto end = (*ends)[index].get<std::int64_t>();
+                if(begin == -1 && end == -1) {
+                    metadata.l7_payload_known = false;
+                    metadata.l7_payload_ranges.clear();
+                    break;
+                }
+                if(begin < 0 || end < begin) {
+                    metadata.l7_payload_known = false;
+                    metadata.l7_payload_ranges.clear();
+                    break;
+                }
+                if(begin == end) continue;
+
+                std::string encoding;
+                if(encodings != info.end() && encodings->is_array() &&
+                   index < encodings->size() && (*encodings)[index].is_string()) {
+                    encoding = (*encodings)[index].get<std::string>();
+                }
+
+                metadata.l7_payload_ranges.push_back({
+                    static_cast<std::size_t>(begin),
+                    static_cast<std::size_t>(end),
+                    std::move(encoding)});
+            }
+        }
+
+        if(metadata.payload_stream.empty()) {
+            for(const auto* field : {"flow.http3.stream_id", "flow.http2.stream_id"}) {
+                const auto value = identifier_field(info, field);
+
+                if(!value.empty()) {
+                    metadata.payload_stream = value;
+                    break;
+                }
+            }
+        }
+
         for (auto item = info.begin(); item != info.end(); ++item) {
             if (!item.key().starts_with("flow.")) continue;
             auto& values = metadata.fields[item.key()];

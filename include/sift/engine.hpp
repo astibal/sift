@@ -22,6 +22,9 @@ struct Match {
     std::string signature;
     std::size_t begin{};
     std::size_t end{};
+    char side{};
+    std::string payload_layer;
+    double confidence{1.0};
 };
 
 struct Verdict {
@@ -30,7 +33,17 @@ struct Verdict {
 };
 
 struct InspectionMetadata {
+    struct L7PayloadRange {
+        std::size_t begin{};
+        std::size_t end{};
+        std::string encoding;
+    };
+
     std::unordered_map<std::string, std::vector<std::string>> fields;
+    std::string payload_layer{"tcp"};
+    std::string payload_stream;
+    std::vector<L7PayloadRange> l7_payload_ranges;
+    bool l7_payload_known{};
 };
 
 class Runtime {
@@ -63,11 +76,18 @@ private:
         char side{'E'};
     };
     struct Flow {
+        struct StructureProbe {
+            std::string bytes;
+            std::size_t next_probe{64};
+            bool done{};
+        };
+
         std::string left;
         std::string right;
         std::unordered_set<std::string> matches;
         std::unordered_map<std::string, std::unordered_set<std::string>> fields;
         std::unordered_set<std::size_t> candidates;
+        std::unordered_map<std::string, StructureProbe> structure_probes;
         hs_stream_t* left_scanner{};
         hs_stream_t* right_scanner{};
     };
@@ -102,6 +122,8 @@ private:
     std::uint64_t accepted_{};
     std::uint64_t hyperscan_scans_{};
     std::uint64_t hyperscan_candidates_{};
+    std::uint64_t structure_scans_{};
+    std::uint64_t structure_matches_{};
     std::uint64_t last_payload_size_{};
     std::uint64_t min_payload_size_{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t max_payload_size_{};

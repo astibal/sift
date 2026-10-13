@@ -29,6 +29,12 @@ Adding a new generic operator is acceptable only when it is useful beyond one
 specific signature. The operator must not contain product names, domains,
 protocol-specific constants, or hidden signature data.
 
+Generic structural inference may publish runtime-derived evidence under
+`protocol.struct.*`. Such identifiers describe only an observed layout (for
+example field widths, byte order, and length semantics), never the identity of
+a concrete protocol. Mapping that layout to a protocol or application remains
+a YAML signature decision.
+
 ## Signature changes
 
 A signature change must:

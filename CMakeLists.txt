@@ -33,6 +33,7 @@ add_library(sift_core
     ${SIFT_COMPILED_SIGNATURES}
     src/engine.cpp
     src/identity.cpp
+    src/structure.cpp
     src/sxbn.cpp
 )
 add_dependencies(sift_core sift_signature_pack)

@@ -1,4 +1,5 @@
 #include <sift/engine.hpp>
+#include <sift/structure.hpp>
 #include <sift/sxbn.hpp>
 
 #include <algorithm>
@@ -20,9 +21,116 @@ bool has_match(const sift::Verdict& verdict, const std::string_view signature) {
                            return match.signature == signature;
                        });
 }
+
+bool has_candidate(const std::vector<sift::structure::TlvMatch>& candidates,
+                   const std::string_view signature) {
+    return std::any_of(candidates.begin(), candidates.end(),
+                       [signature](const sift::structure::TlvMatch& match) {
+                           return match.signature == signature;
+                       });
+}
+
+void append_u16le(std::string& output, const std::uint16_t value) {
+    output.push_back(static_cast<char>(value & 0xffU));
+    output.push_back(static_cast<char>(value >> 8U));
+}
+
+std::string sample_tlv() {
+    std::string result(16, static_cast<char>(0xa5));
+
+    for(std::uint16_t record = 0; record < 4; ++record) {
+        append_u16le(result, static_cast<std::uint16_t>(record + 1));
+        append_u16le(result, static_cast<std::uint16_t>(record + 10));
+
+        const auto length = static_cast<std::uint16_t>(record + 8);
+        append_u16le(result, length);
+        result.append(length, static_cast<char>('a' + record));
+    }
+
+    return result;
+}
 }
 
 int main() {
+    const auto tlv_payload = sample_tlv();
+    const auto tlv = sift::structure::infer_tlv_candidates(tlv_payload);
+    check(!tlv.empty(), "TLV structure was not inferred");
+    check(has_candidate(tlv, "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "expected TLV structure candidate is missing");
+    check(has_candidate(tlv, "protocol.struct.tlv.16m.1x.1x.2l.le.lv"),
+          "equally valid TLV structure ambiguity was hidden");
+    check(sift::structure::infer_tlv_candidates(
+              std::string_view(tlv_payload).substr(0, tlv_payload.size() - 3)).empty(),
+          "incomplete final TLV record produced a match");
+    check(!sift::structure::infer_tlv(std::string(128, 'A')).has_value(),
+          "plain bytes produced a false TLV structure");
+
+    sift::Runtime structure_runtime;
+    const auto structure_verdict = structure_runtime.inspect(
+        "structured-flow", 'L', tlv_payload);
+    check(has_match(structure_verdict,
+                    "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "runtime did not publish inferred TLV structure");
+    check(structure_runtime.status().at("structure").at("matches") >= 1,
+          "runtime structure match was not counted");
+
+    sift::Runtime ranged_runtime;
+    sift::InspectionMetadata empty_l7;
+    empty_l7.l7_payload_known = true;
+    check(ranged_runtime.inspect("empty-l7", 'L', tlv_payload, empty_l7).matches.empty(),
+          "known-empty L7 payload was inspected");
+
+    sift::InspectionMetadata beginning;
+    beginning.fields["flow.http2"] = {"true"};
+    beginning.payload_stream = "19";
+    beginning.l7_payload_known = true;
+    beginning.l7_payload_ranges = {{10, 30, ""}, {35, 55, ""}};
+    const auto first_l7 = std::string(10, 'x') + tlv_payload.substr(0, 20) +
+        std::string(5, 'y') + tlv_payload.substr(20, 20);
+    check(!has_match(ranged_runtime.inspect("ranged", 'L', first_l7, beginning),
+                     "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "partial L7 unit matched too early");
+
+    sift::InspectionMetadata continuation;
+    continuation.fields["flow.http2"] = {"true"};
+    continuation.payload_stream = "19";
+    continuation.l7_payload_known = true;
+    continuation.l7_payload_ranges = {{7, 7 + tlv_payload.size() - 40, ""}};
+    const auto second_l7 = std::string(7, 'z') + tlv_payload.substr(40);
+    const auto ranged_verdict = ranged_runtime.inspect(
+        "ranged", 'L', second_l7, continuation);
+    check(has_match(ranged_verdict,
+                    "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "extracted L7 ranges did not produce a structure match");
+    if(!ranged_verdict.matches.empty()) {
+        check(ranged_verdict.matches.front().side == 'L',
+              "structure match lost its direction");
+        check(ranged_verdict.matches.front().payload_layer == "http2.payload",
+              "structure match lost its payload layer");
+    }
+
+    sift::Runtime isolated_runtime;
+    beginning.payload_stream = "23";
+    check(!has_match(isolated_runtime.inspect("isolated", 'L', first_l7, beginning),
+                     "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "isolated structure prefix matched too early");
+    continuation.payload_stream = "29";
+    check(isolated_runtime.inspect("isolated", 'L', second_l7, continuation).matches.empty(),
+          "L7 structure state leaked between streams");
+    continuation.payload_stream = "23";
+    check(isolated_runtime.inspect("isolated", 'R', second_l7, continuation).matches.empty(),
+          "L7 structure state leaked between directions");
+
+    sift::Runtime encoding_runtime;
+    beginning.payload_stream = "31";
+    beginning.l7_payload_ranges = {{10, 30, "gzip"}, {35, 55, "gzip"}};
+    check(!has_match(encoding_runtime.inspect("encoding", 'L', first_l7, beginning),
+                     "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "encoded structure prefix matched too early");
+    continuation.payload_stream = "31";
+    check(encoding_runtime.inspect("encoding", 'L', second_l7, continuation).matches.empty(),
+          "L7 structure state leaked between encodings");
+
     const auto declared_identity = sift::resolve_identity(
         nlohmann::json{{"identity", {{"tenant", "acme"}, {"instance", "edge-a"}}},
                        {"source", "legacy"}},
