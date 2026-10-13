@@ -45,7 +45,7 @@ add_executable(siftd
     src/main.cpp
     src/server.cpp
 )
-target_include_directories(siftd PRIVATE
+target_include_directories(siftd SYSTEM PRIVATE
     external/lmhpp/include
 )
 target_link_libraries(siftd PRIVATE
