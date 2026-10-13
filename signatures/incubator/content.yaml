@@ -1,0 +1,79 @@
+version: 1
+
+# Content magics are applied to the beginning of a reconstructed application
+# object or payload, not blindly at every TCP segment boundary.
+x-sources:
+  general: &general
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/general.sig" }
+  archive: &archive
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/archive.sig" }
+  video: &video
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/video.sig" }
+  audio: &audio
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/audio.sig" }
+  java: &java
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/java.sig" }
+  office: &office
+    - { project: zeek, url: "https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/frameworks/files/magic/office.sig" }
+
+signatures:
+  - { id: content.windows.lnk, transport: any, layer: content, result: { mime: application/x-ms-shortcut }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '4c 00 00 00 01 14 02 00 00 00 00 00 c0 00 00 00 00 00 00 46' } }], sources: *general }
+  - { id: content.windows.policy, transport: any, layer: content, result: { mime: application/vnd.ms-pol }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: PReg } }], sources: *general }
+  - { id: content.windows.registry-v4, transport: any, layer: content, result: { mime: application/vnd.ms-reg }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: REGEDIT4 } }], sources: *general }
+  - { id: content.windows.registry-hive, transport: any, layer: content, result: { mime: application/vnd.ms-regf }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: regf } }], sources: *general }
+  - { id: content.flash.swf, transport: any, layer: content, result: { mime: application/x-shockwave-flash }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: regex, value: '^[FCZ]WS' } }], sources: *general }
+  - { id: content.outlook.tnef, transport: any, layer: content, result: { mime: application/vnd.ms-tnef }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '78 9f 3e 22' } }], sources: *general }
+  - { id: content.certificate.pem, transport: any, layer: content, result: { mime: application/x-pem }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: '-----BEGIN CERTIFICATE-----' } }], sources: *general }
+  - { id: content.capture.pcap, transport: any, layer: content, result: { mime: application/vnd.tcpdump.pcap }, confidence: certain, logic: any, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'a1 b2 c3 d4' } }, { side: either, offset: 0, match: { type: bytes, value_hex: 'd4 c3 b2 a1' } }], sources: *general }
+  - { id: content.capture.pcapng, transport: any, layer: content, result: { mime: application/vnd.tcpdump.pcapng }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '0a 0d 0d 0a' } }, { side: either, offset: 8, match: { type: validator, name: pcapng.byte-order-magic } }], sources: *general }
+  - { id: content.image.dds, transport: any, layer: content, result: { mime: application/x-ms-dds }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: 'DDS ' } }], sources: *general }
+  - { id: content.patch.bsdiff, transport: any, layer: content, result: { mime: application/bsdiff }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: BSDIFF } }], sources: *general }
+  - { id: content.apple.bplist, transport: any, layer: content, result: { mime: application/bplist }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: regex, value: '^bplist0?' } }], sources: *general }
+  - { id: content.microsoft.chm, transport: any, layer: content, result: { mime: application/mshelp }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: ITSF } }], sources: *general }
+  - { id: content.blizzard.mpq, transport: any, layer: content, result: { mime: application/x-game-mpq }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '4d 50 51 1a' } }], sources: *general }
+  - { id: content.blizzard.casc, transport: any, layer: content, result: { mime: application/x-blizgame }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: BLTE } }], sources: *general }
+
+  - { id: content.archive.zip, transport: any, layer: content, result: { mime: application/zip }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '50 4b 03 04' } }], sources: *archive }
+  - { id: content.archive.zip-multivolume, transport: any, layer: content, result: { mime: application/zip, variant: multivolume }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '50 4b 07 08 50 4b 03 04' } }], sources: *archive }
+  - { id: content.archive.rar, transport: any, layer: content, result: { mime: application/x-rar }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: 'Rar!' } }], sources: *archive }
+  - { id: content.archive.gzip, transport: any, layer: content, result: { mime: application/gzip }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '1f 8b' } }], sources: *archive }
+  - { id: content.archive.cab, transport: any, layer: content, result: { mime: application/vnd.ms-cab-compressed }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '4d 53 43 46 00 00 00 00' } }], sources: *archive }
+  - { id: content.archive.xar, transport: any, layer: content, result: { mime: application/x-xar }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: 'xar!' } }], sources: *archive }
+  - { id: content.archive.rpm, transport: any, layer: content, result: { mime: application/x-rpm }, confidence: high, logic: any, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'ed ab ee db' } }, { side: either, offset: 0, match: { type: ascii, value: drpm } }], sources: *archive }
+  - { id: content.archive.stuffit, transport: any, layer: content, result: { mime: application/x-stuffit }, confidence: high, logic: any, clauses: [{ side: either, offset: 0, match: { type: ascii, value: 'SIT!' } }, { side: either, offset: 0, match: { type: ascii, value: StuffIt } }], sources: *archive }
+  - { id: content.archive.ar, transport: any, layer: content, result: { mime: application/x-archive }, confidence: high, logic: any, clauses: [{ side: either, offset: 0, match: { type: ascii, value: '!<arch>' } }, { side: either, offset: 0, match: { type: ascii, value: '<ar>' } }], sources: *archive }
+  - { id: content.archive.lz4-legacy, transport: any, layer: content, result: { mime: application/x-lz4, variant: legacy }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '02 21 4c 18' } }], sources: *archive }
+  - { id: content.archive.lz4, transport: any, layer: content, result: { mime: application/x-lz4 }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '04 22 4d 18' } }], sources: *archive }
+  - { id: content.archive.lrzip, transport: any, layer: content, result: { mime: application/x-lrzip }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: LRZI } }], sources: *archive }
+  - { id: content.archive.lzip, transport: any, layer: content, result: { mime: application/x-lzip }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: LZIP } }], sources: *archive }
+  - { id: content.archive.warc, transport: any, layer: content, result: { mime: application/warc }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: 'WARC/' } }], sources: *archive }
+  - { id: content.archive.7zip, transport: any, layer: content, result: { mime: application/x-7z-compressed }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '37 7a bc af 27 1c' } }], sources: *archive }
+  - { id: content.archive.xz, transport: any, layer: content, result: { mime: application/x-xz }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'fd 37 7a 58 5a 00' } }], sources: *archive }
+  - { id: content.archive.arj, transport: any, layer: content, result: { mime: application/x-arj }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '60 ea' } }], sources: *archive }
+  - { id: content.archive.bzip2, transport: any, layer: content, result: { mime: application/x-bzip2 }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: BZh } }], sources: *archive }
+  - { id: content.archive.compress, transport: any, layer: content, result: { mime: application/x-compress }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '1f 9d' } }], sources: *archive }
+  - { id: content.archive.lzma, transport: any, layer: content, result: { mime: application/x-lzma }, confidence: probable, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '5d 00 00' } }], sources: *archive }
+
+  - { id: content.video.flv, transport: any, layer: content, result: { mime: video/x-flv }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: FLV } }], sources: *video }
+  - { id: content.video.mng, transport: any, layer: content, result: { mime: video/x-mng }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '8a 4d 4e 47' } }], sources: *video }
+  - { id: content.video.jng, transport: any, layer: content, result: { mime: video/x-jng }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '8b 4a 4e 47' } }], sources: *video }
+  - { id: content.video.mpeg, transport: any, layer: content, result: { mime: video/mpeg }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: regex, value: '^\\x00\\x00\\x01[\\xb0-\\xbb]' } }], sources: *video }
+  - { id: content.video.mpv, transport: any, layer: content, result: { mime: video/mpv }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '00 00 01 b3' } }], sources: *video }
+  - { id: content.video.h264, transport: any, layer: content, result: { mime: video/h264 }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '00 00 00 01' } }, { side: either, offset: 4, match: { type: validator, name: h264.nal-header } }], sources: *video }
+  - { id: content.video.webm, transport: any, layer: content, result: { mime: video/webm }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '1a 45 df a3' } }, { side: either, offset: 4, search_max: 256, match: { type: validator, name: ebml.doctype-webm } }], sources: *video }
+  - { id: content.video.matroska, transport: any, layer: content, result: { mime: video/x-matroska }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '1a 45 df a3' } }, { side: either, offset: 4, search_max: 256, match: { type: validator, name: ebml.doctype-matroska } }], sources: *video }
+  - { id: content.video.mpeg-program, transport: any, layer: content, result: { mime: video/mp2p }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '00 00 01 ba' } }, { side: either, offset: 4, match: { type: validator, name: mpeg.pack-header } }], sources: *video }
+  - { id: content.video.mpeg-ts, transport: any, layer: content, result: { mime: video/mp2t }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, min_size: 753, match: { type: validator, name: mpeg.transport-sync-188x4 } }], sources: *video }
+  - { id: content.video.sgi, transport: any, layer: content, result: { mime: video/x-sgi-movie }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: ascii, value: MOVI } }], sources: *video }
+  - { id: content.video.quicktime, transport: any, layer: content, result: { mime: video/quicktime }, confidence: high, logic: all, clauses: [{ side: either, offset: 4, match: { type: regex, value: '^(mdat|moov)' } }], sources: *video }
+  - { id: content.video.mp4, transport: any, layer: content, result: { mime: video/mp4 }, confidence: high, logic: all, clauses: [{ side: either, offset: 4, match: { type: regex, value: '^ftyp(isom|mp4[12])' } }], sources: *video }
+  - { id: content.video.3gpp, transport: any, layer: content, result: { mime: video/3gpp }, confidence: high, logic: all, clauses: [{ side: either, offset: 4, match: { type: regex, value: '^ftyp(3g[egps2]|avc1|mmp4)' } }], sources: *video }
+  - { id: content.audio.mp3, transport: any, layer: content, result: { mime: audio/mpeg }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: validator, name: mp3.id3-or-frame-header } }], sources: *audio }
+  - { id: content.audio.m4a, transport: any, layer: content, result: { mime: audio/m4a }, confidence: high, logic: all, clauses: [{ side: either, offset: 4, match: { type: regex, value: '^ftypm4a' } }], sources: *audio }
+
+  - { id: content.java.class, transport: any, layer: content, result: { mime: application/x-java-applet }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'ca fe ba be' } }, { side: either, offset: 4, match: { type: validator, name: java.class-version } }], sources: *java }
+  - { id: content.java.pack200, transport: any, layer: content, result: { mime: application/x-java-pack200 }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'ca fe d0 0d' } }], sources: *java }
+  - { id: content.java.keystore, transport: any, layer: content, result: { mime: application/x-java-keystore }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'fe ed fe ed' } }], sources: *java }
+  - { id: content.java.jce-keystore, transport: any, layer: content, result: { mime: application/x-java-jce-keystore }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'ce ce ce ce' } }], sources: *java }
+  - { id: content.office.ole, transport: any, layer: content, result: { mime: application/x-ole-storage }, confidence: certain, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: 'd0 cf 11 e0 a1 b1 1a e1' } }], sources: *office }
+  - { id: content.office.ooxml, transport: any, layer: content, result: { mime: application/vnd.openxmlformats-officedocument }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, match: { type: bytes, value_hex: '50 4b 03 04 14 00 06 00' } }], sources: *office }

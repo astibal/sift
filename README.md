@@ -75,3 +75,9 @@ never requires editing the engine. Python 3 with PyYAML is required when
 building the compiled pack. See [SIGNATURE_POLICY.md](SIGNATURE_POLICY.md) for
 the mandatory rules governing signature changes and [API.md](API.md) for the
 wire schema, evidence namespaces, and trust boundary.
+
+Plausible but unverified rules live in the inert
+[`signatures/incubator/`](signatures/incubator/) inventory. They retain pinned
+research provenance but are not compiled or consulted by `siftd`. Candidates
+move into the runtime pack only after the documented plaintext,
+encrypted/metadata-visible, negative and streaming-delivery checks pass.

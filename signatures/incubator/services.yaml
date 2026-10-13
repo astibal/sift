@@ -1,0 +1,79 @@
+version: 1
+signatures:
+  - id: service.youtube.hostname
+    transport: any
+    layer: service
+    result: { service: youtube }
+    confidence: high
+    logic: any
+    clauses:
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: youtube.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: youtu.be } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: googlevideo.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: ytimg.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: youtube-nocookie.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: youtubeeducation.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: yt3.ggpht.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: youtubei.googleapis.com } }
+    sources:
+      - project: ndpi
+        url: https://github.com/ntop/nDPI/blob/5915c399c0690be7ba252d32a741d1bf7ea07846/src/lib/ndpi_content_match.c.inc#L790-L801
+
+  - id: service.youtube.upload
+    transport: any
+    layer: service
+    result: { service: youtube_upload }
+    confidence: high
+    logic: any
+    clauses:
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: upload.youtube.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: upload.video.google.com } }
+    sources:
+      - project: ndpi
+        url: https://github.com/ntop/nDPI/blob/5915c399c0690be7ba252d32a741d1bf7ea07846/src/lib/ndpi_content_match.c.inc#L790-L791
+
+  - id: service.youtube.kids
+    transport: any
+    layer: service
+    result: { service: youtube_kids }
+    confidence: high
+    logic: any
+    clauses:
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: kids.youtube.com } }
+    sources:
+      - project: ndpi
+        url: https://github.com/ntop/nDPI/blob/5915c399c0690be7ba252d32a741d1bf7ea07846/src/lib/ndpi_content_match.c.inc#L793
+
+  - id: service.facebook.hostname
+    transport: any
+    layer: service
+    result: { service: facebook }
+    confidence: high
+    logic: any
+    clauses:
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: facebook.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: facebook.net } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fbcdn.net } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fbsbx.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fbwat.ch } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fb.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fb.gg } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: fbstatic-a.akamaihd.net } }
+    sources:
+      - project: ndpi
+        url: https://github.com/ntop/nDPI/blob/5915c399c0690be7ba252d32a741d1bf7ea07846/src/lib/ndpi_content_match.c.inc#L519-L527
+
+  - id: service.facebook.messenger
+    transport: any
+    layer: service
+    result: { service: facebook_messenger }
+    confidence: high
+    logic: any
+    clauses:
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: edge-mqtt.facebook.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: mqtt-mini.facebook.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: messenger.com } }
+      - { side: either, match: { type: hostname-suffix, field: passive-hostname, value: m.me } }
+    sources:
+      - project: ndpi
+        url: https://github.com/ntop/nDPI/blob/5915c399c0690be7ba252d32a741d1bf7ea07846/src/lib/ndpi_content_match.c.inc#L819-L822

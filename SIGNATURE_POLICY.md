@@ -48,6 +48,15 @@ A signature change must:
 
 Generated artifacts are build products. YAML is the authoritative source.
 
+## Signature incubator
+
+Unverified discoveries belong in `signatures/incubator/`, not in the runtime
+pack and never in C++. Incubator candidates preserve promising match logic and
+source attribution but are excluded from compilation and verdicts. Promotion
+requires plaintext and encrypted/metadata-visible coverage where applicable,
+negative vectors, incremental-delivery tests and an explicit false-positive
+boundary. See `signatures/incubator/README.md` for the complete workflow.
+
 Rules may consume requestor-provided `flow.*` observations defined by
 [API.md](API.md), but must name each accepted field explicitly. Flow metadata
 must never be silently treated as raw-payload evidence, and requestor-provided

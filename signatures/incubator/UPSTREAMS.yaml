@@ -1,0 +1,31 @@
+version: 1
+upstreams:
+  wireshark:
+    revision: 6cf21a765b876ad27722a1fb7daa97886e42d544
+    repository: https://github.com/wireshark/wireshark
+    usage: Protocol dissectors used as structure and constant references.
+  suricata:
+    repository: https://github.com/OISF/suricata
+    commit: 4badfd13f43e112dd61c5cbab5718765512ed5ad
+    license: GPL-2.0-only
+    role: Current protocol probes, parser activation patterns and validation logic.
+  zeek:
+    repository: https://github.com/zeek/zeek
+    commit: 5b7c9c753a8e69da4a6dcd41e7a06c26226647dd
+    license: BSD-3-Clause
+    role: Bidirectional Dynamic Protocol Detection signatures.
+  l7-filter:
+    repository: https://github.com/l7-filter/layer7-patterns
+    commit: 468fc5a32f63a17b7a6302685d083b66c5eb7951
+    license: GPL-2.0-only
+    role: Historical protocol regex corpus; use only as corroboration.
+  libprotoident:
+    repository: https://github.com/LibtraceTeam/libprotoident
+    commit: 97a8efe
+    license: LGPL-3.0-or-later
+    role: Bidirectional prefix and first-message-length heuristics.
+  ndpi:
+    repository: https://github.com/ntop/nDPI
+    commit: 5915c399c0690be7ba252d32a741d1bf7ea07846
+    license: LGPL-3.0-or-later
+    role: Service hostname corpus; not used as the protocol parser.

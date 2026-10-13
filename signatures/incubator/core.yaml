@@ -1,0 +1,544 @@
+version: 1
+signatures:
+  - id: protocol.http2.server-frame
+    transport: tcp
+    layer: protocol
+    result: { protocol: http2 }
+    confidence: probable
+    logic: all
+    enables: http2
+    clauses:
+      - side: right
+        offset: 0
+        min_size: 9
+        match: { type: validator, name: http2.frame-header }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/http2/http2.rs
+        note: Validate 24-bit length, known frame type, flags, reserved bit and stream-id constraints.
+
+  - id: security.dtls.client-hello
+    transport: udp
+    layer: security
+    result: { security: dtls, message: client_hello }
+    confidence: high
+    logic: all
+    enables: dtls
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 25
+        match: { type: validator, name: dtls.client-hello }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ssl/dpd.sig
+
+  - id: protocol.dns.udp
+    transport: udp
+    layer: protocol
+    result: { protocol: dns }
+    confidence: high
+    logic: all
+    enables: dns
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 12
+        match: { type: validator, name: dns.header-and-sections }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/dns/dns.rs
+
+  - id: protocol.dns.tcp
+    transport: tcp
+    layer: protocol
+    result: { protocol: dns }
+    confidence: high
+    logic: all
+    enables: dns
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 14
+        match: { type: validator, name: dns.tcp-length-header-and-sections }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/dns/dns.rs#L903-L916
+
+  - id: protocol.quic.v1-initial
+    transport: udp
+    layer: protocol
+    result: { protocol: quic, version: 1 }
+    confidence: high
+    logic: all
+    enables: quic
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 6
+        match: { type: masked-bytes, value_hex: 'c0 00 00 00 01', mask_hex: 'f0 ff ff ff ff' }
+      - side: left
+        offset: 0
+        match: { type: validator, name: quic.long-header-initial }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig
+
+  - id: protocol.quic.v2-initial
+    transport: udp
+    layer: protocol
+    result: { protocol: quic, version: 2 }
+    confidence: high
+    logic: all
+    enables: quic
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 6
+        match: { type: masked-bytes, value_hex: 'd0 6b 33 43 cf', mask_hex: 'f0 ff ff ff ff' }
+      - side: left
+        offset: 0
+        match: { type: validator, name: quic.long-header-initial }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig
+
+  - id: protocol.dhcp.cookie
+    transport: udp
+    layer: protocol
+    result: { protocol: dhcpv4 }
+    confidence: certain
+    logic: all
+    enables: dhcp
+    clauses:
+      - side: either
+        offset: 236
+        min_size: 240
+        match: { type: bytes, value_hex: '63 82 53 63' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dhcp/dpd.sig
+
+  - id: protocol.dnp3.magic
+    transport: any
+    layer: protocol
+    result: { protocol: dnp3 }
+    confidence: high
+    logic: all
+    enables: dnp3
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 10
+        match: { type: bytes, value_hex: '05 64' }
+      - side: either
+        offset: 0
+        match: { type: validator, name: dnp3.link-header-crc }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dnp3/dpd.sig
+
+  - id: protocol.ftp.dialog
+    transport: tcp
+    layer: protocol
+    result: { protocol: ftp }
+    confidence: high
+    logic: all
+    enables: ftp
+    clauses:
+      - side: left
+        search_max: 1024
+        match: { type: regex, value: '(?im)^(?:[ \t]*)USER ' }
+      - side: right
+        search_max: 1024
+        match: { type: regex, value: '(?m)^[ \t]*(120|220)[^0-9].*\r?\n[ \t]*(230|331)[^0-9]' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig
+
+  - id: protocol.smtp.dialog
+    transport: tcp
+    layer: protocol
+    result: { protocol: smtp }
+    confidence: high
+    logic: all
+    enables: smtp
+    clauses:
+      - side: left
+        search_max: 1024
+        match: { type: regex, value: '(?im)^[ \t]*(EHLO|HELO)[ \t]' }
+      - side: right
+        offset: 0
+        search_max: 512
+        match: { type: regex, value: '^[ \t]*220[ -]' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/smtp/dpd.sig
+
+  - id: protocol.pop3.dialog
+    transport: tcp
+    layer: protocol
+    result: { protocol: pop3 }
+    confidence: high
+    logic: all
+    enables: pop3
+    clauses:
+      - side: left
+        search_max: 1024
+        match: { type: regex, value: '(?im)^[ \t]*(USER |APOP |CAPA|AUTH|STLS)' }
+      - side: right
+        offset: 0
+        match: { type: ascii, value: '+OK' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/pop3/dpd.sig
+
+  - id: protocol.socks4.dialog
+    transport: tcp
+    layer: tunnel
+    result: { protocol: socks4 }
+    confidence: certain
+    logic: all
+    enables: socks
+    clauses:
+      - side: left
+        offset: 0
+        search_max: 41
+        match: { type: regex, value: '^\x04[\x01\x02].{0,32}\x00' }
+      - side: right
+        offset: 0
+        match: { type: regex, value: '^\x00[\x5a-\x5d]' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
+
+  - id: protocol.socks5.negotiation
+    transport: tcp
+    layer: tunnel
+    result: { protocol: socks5 }
+    confidence: certain
+    logic: all
+    enables: socks
+    clauses:
+      - side: left
+        offset: 0
+        match: { type: validator, name: socks5.client-method-list }
+      - side: right
+        offset: 0
+        min_size: 2
+        match: { type: masked-bytes, value_hex: '05 00', mask_hex: 'ff 00' }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
+
+  - id: protocol.postgresql.startup3
+    transport: tcp
+    layer: protocol
+    result: { protocol: postgresql, version: '3.x' }
+    confidence: high
+    logic: all
+    enables: postgresql
+    clauses:
+      - side: left
+        offset: 0
+        search_max: 268
+        match: { type: regex, value: '^....\x00\x03\x00.{0,256}user\x00' }
+      - side: right
+        offset: 0
+        min_size: 5
+        match: { type: validator, name: postgresql.server-message }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/postgresql/dpd.sig
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/pgsql/pgsql.rs
+
+  - id: protocol.bittorrent.dht
+    transport: udp
+    layer: protocol
+    result: { protocol: bittorrent_dht }
+    confidence: high
+    logic: all
+    enables: bittorrent_dht
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 12
+        match: { type: ascii, value: 'd1:ad2:id20:' }
+      - side: either
+        offset: 0
+        match: { type: validator, name: bittorrent-dht.bencode-message }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/bittorrent_dht/bittorrent_dht.rs#L27-L35
+
+  - id: protocol.imap.server-banner
+    transport: tcp
+    layer: protocol
+    result: { protocol: imap }
+    confidence: high
+    logic: any
+    enables: imap
+    clauses:
+      - side: right
+        offset: 0
+        search_max: 10
+        match: { type: regex, value: '(?i)^\* (OK|NO|BAD|LIST|ESEARCH|STATUS|FLAGS) ' }
+      - side: left
+        offset: 0
+        search_max: 17
+        match: { type: regex, value: '(?i)^.{1,6} CAPABILITY' }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/src/app-layer-imap.c#L64-L115
+        note: Server patterns are direct; CAPABILITY additionally uses a client probe.
+
+  - id: protocol.xmpp.stream
+    transport: tcp
+    layer: protocol
+    result: { protocol: xmpp }
+    confidence: high
+    logic: any
+    enables: xmpp
+    clauses:
+      - side: either
+        offset: 0
+        search_max: 1024
+        match: { type: regex, value: "^(<\\?xml[^?>]*\\?>)?[\\n\\r ]*<stream:stream [^>]*xmlns=['\"]jabber:" }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/xmpp/dpd.sig
+
+  - id: protocol.websocket.upgrade
+    transport: tcp
+    layer: protocol
+    result: { protocol: websocket }
+    confidence: certain
+    logic: all
+    enables: websocket
+    clauses:
+      - side: left
+        search_max: 16384
+        match: { type: regex, value: '(?im)^Upgrade:[ \t]*websocket[ \t]*\r?$' }
+      - side: left
+        search_max: 16384
+        match: { type: regex, value: '(?im)^Connection:.*\bUpgrade\b.*\r?$' }
+      - side: left
+        search_max: 16384
+        match: { type: regex, value: '(?im)^Sec-WebSocket-Key:[ \t]*[A-Za-z0-9+/]{22}==[ \t]*\r?$' }
+      - side: right
+        search_max: 16384
+        match: { type: regex, value: '(?i)^HTTP/1\.[01] 101[ ]' }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/websocket/websocket.rs
+
+  - id: protocol.mqtt.connect
+    transport: tcp
+    layer: protocol
+    result: { protocol: mqtt }
+    confidence: high
+    logic: all
+    enables: mqtt
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 8
+        match: { type: validator, name: mqtt.connect-fixed-header-and-protocol-name }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/mqtt/mqtt.rs#L682-L705
+
+  - id: protocol.rdp.tpkt
+    transport: tcp
+    layer: protocol
+    result: { protocol: rdp }
+    confidence: high
+    logic: all
+    enables: rdp
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 7
+        match: { type: bytes, value_hex: '03' }
+      - side: either
+        offset: 0
+        match: { type: validator, name: rdp.tpkt-x224 }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/rdp/rdp.rs#L440-L469
+
+  - id: protocol.redis.resp-dialog
+    transport: tcp
+    layer: protocol
+    result: { protocol: redis }
+    confidence: high
+    logic: all
+    enables: redis
+    clauses:
+      - side: left
+        search_max: 4096
+        match: { type: validator, name: redis.resp-request }
+      - side: right
+        search_max: 4096
+        match: { type: validator, name: redis.resp-response }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/redis/dpd.sig
+
+  - id: protocol.ldap.ber
+    transport: any
+    layer: protocol
+    result: { protocol: ldap }
+    confidence: high
+    logic: all
+    enables: ldap
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 7
+        match: { type: validator, name: ldap.ber-message-and-operation }
+      - side: right
+        offset: 0
+        min_size: 2
+        match: { type: validator, name: ldap.ber-message }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ldap/dpd.sig
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ldap/ldap.rs
+
+  - id: protocol.kerberos.as-tgs
+    transport: any
+    layer: protocol
+    result: { protocol: kerberos5 }
+    confidence: high
+    logic: all
+    enables: kerberos
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 12
+        match: { type: validator, name: kerberos5.asn1-application-message }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/krb/dpd.sig
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/krb/krb5.rs
+
+  - id: protocol.ntp.packet
+    transport: udp
+    layer: protocol
+    result: { protocol: ntp }
+    confidence: high
+    logic: all
+    enables: ntp
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 48
+        match: { type: validator, name: ntp.header-version-mode-and-length }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ntp/ntp.rs#L246-L264
+
+  - id: protocol.snmp.ber
+    transport: udp
+    layer: protocol
+    result: { protocol: snmp }
+    confidence: high
+    logic: all
+    enables: snmp
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 8
+        match: { type: validator, name: snmp.ber-version-community-pdu }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/snmp/snmp.rs#L379-L397
+
+  - id: protocol.modbus.tcp
+    transport: tcp
+    layer: protocol
+    result: { protocol: modbus }
+    confidence: high
+    logic: all
+    enables: modbus
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 8
+        match: { type: validator, name: modbus.mbap-header-and-function }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/modbus/modbus.rs#L311-L350
+
+  - id: protocol.enip.encapsulation
+    transport: any
+    layer: protocol
+    result: { protocol: enip }
+    confidence: high
+    logic: all
+    enables: enip
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 24
+        match: { type: validator, name: enip.encapsulation-header-command-length }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/enip/enip.rs
+
+  - id: protocol.ike.header
+    transport: udp
+    layer: protocol
+    result: { protocol: ike }
+    confidence: high
+    logic: all
+    enables: ike
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 28
+        match: { type: validator, name: ike.cookies-version-exchange-length }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ike/ike.rs#L290-L330
+
+  - id: protocol.nfs.rpc
+    transport: any
+    layer: protocol
+    result: { protocol: nfs }
+    confidence: high
+    logic: all
+    enables: nfs
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 24
+        match: { type: validator, name: rpc.nfs-program-and-version }
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/nfs/nfs.rs#L2947-L3045
+
+  - id: protocol.dcerpc.connection-oriented
+    transport: tcp
+    layer: protocol
+    result: { protocol: dcerpc }
+    confidence: high
+    logic: all
+    enables: dcerpc
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 16
+        match: { type: masked-bytes, value_hex: '05 00 00', mask_hex: 'ff fe ec' }
+      - side: either
+        offset: 0
+        match: { type: validator, name: dcerpc.common-header-fragment-length }
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dce-rpc/dpd.sig
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/dcerpc/dcerpc.rs
