@@ -77,11 +77,13 @@ int main() {
     sift::Runtime structure_runtime;
     const auto structure_verdict = structure_runtime.inspect(
         "structured-flow", 'L', tlv_payload);
-    check(has_match(structure_verdict,
-                    "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
-          "runtime did not publish inferred TLV structure");
-    check(structure_runtime.status().at("structure").at("matches") >= 1,
-          "runtime structure match was not counted");
+    check(!has_match(structure_verdict,
+                     "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "runtime published an experimental TLV candidate");
+    check(structure_runtime.status().at("structure").at("candidates") >= 1,
+          "runtime structure candidate was not counted");
+    check(structure_runtime.status().at("structure").at("published") == 0,
+          "runtime reports published structure candidates");
 
     sift::Runtime ranged_runtime;
     sift::InspectionMetadata empty_l7;
@@ -108,15 +110,11 @@ int main() {
     const auto second_l7 = std::string(7, 'z') + tlv_payload.substr(40);
     const auto ranged_verdict = ranged_runtime.inspect(
         "ranged", 'L', second_l7, continuation);
-    check(has_match(ranged_verdict,
-                    "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
-          "extracted L7 ranges did not produce a structure match");
-    if(!ranged_verdict.matches.empty()) {
-        check(ranged_verdict.matches.front().side == 'L',
-              "structure match lost its direction");
-        check(ranged_verdict.matches.front().payload_layer == "http2.payload",
-              "structure match lost its payload layer");
-    }
+    check(!has_match(ranged_verdict,
+                     "protocol.struct.tlv.16m.2x.2x.2l.le.lv"),
+          "runtime published an L7 structure candidate");
+    check(ranged_runtime.status().at("structure").at("candidates") >= 1,
+          "extracted L7 ranges did not produce an internal candidate");
 
     sift::Runtime isolated_runtime;
     beginning.payload_stream = "23";

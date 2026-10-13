@@ -353,17 +353,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
             const auto inferred = structure::infer_tlv_candidates(probe.bytes);
 
             if(!inferred.empty()) {
-                for(const auto& candidate : inferred) {
-                    const auto end = candidate.covered_bytes == 0 ? candidate.offset
-                        : candidate.offset + candidate.covered_bytes - 1;
-                    verdict.matches.push_back({
-                        candidate.signature, candidate.offset, end,
-                        is_right ? 'R' : 'L', std::string(structure_layer),
-                        candidate.confidence});
-                    ++matches_;
-                    ++signature_matches_[candidate.signature];
-                    ++structure_matches_;
-                }
+                structure_candidates_ += inferred.size();
 
                 probe.done = true;
             } else if(probe.next_probe >= max_probe_bytes) {
@@ -477,7 +467,9 @@ nlohmann::json Runtime::status() const {
                      {"candidates", hyperscan_candidates_}}},
         {"structure", {{"scanner", "length-framing-inference"},
                        {"scans", structure_scans_},
-                       {"matches", structure_matches_}}},
+                       {"candidates", structure_candidates_},
+                       {"published", 0},
+                       {"status", "experimental-observation-only"}}},
         {"uptime_ms", uptime},
         {"identity", {{"tenants_seen", tenants_seen_.size()},
                       {"instances_seen", instances_seen_.size()},

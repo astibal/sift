@@ -123,7 +123,7 @@ private:
     std::uint64_t hyperscan_scans_{};
     std::uint64_t hyperscan_candidates_{};
     std::uint64_t structure_scans_{};
-    std::uint64_t structure_matches_{};
+    std::uint64_t structure_candidates_{};
     std::uint64_t last_payload_size_{};
     std::uint64_t min_payload_size_{std::numeric_limits<std::uint64_t>::max()};
     std::uint64_t max_payload_size_{};

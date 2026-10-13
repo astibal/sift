@@ -75,16 +75,12 @@ generic `l7.payload` as its layer. With unknown L7 location, inference falls
 back to the complete `payload_layer` stream. A known-empty range contributes no
 bytes.
 
-Structure results use the compact namespace discussed above, for example:
+The experimental structure engine internally uses compact candidate names such
+as:
 
 ```json
 {
-  "signature": "protocol.struct.tlv.16m.2x.2x.2l.le.lv",
-  "begin": 16,
-  "end": 511,
-  "side": "L",
-  "payload_layer": "http2.payload",
-  "confidence": 0.91
+  "candidate": "protocol.struct.tlv.16m.2x.2x.2l.le.lv"
 }
 ```
 
@@ -92,6 +88,10 @@ Here `16m` is the uninterpreted prefix length, each `2x` is an unknown two-byte
 field, `2l` is the two-byte length field, `le` is its byte order, and `lv` says
 the length counts only the value. Sift can return several candidates when the
 same record boundaries admit more than one equally plausible field layout.
+These observations are deliberately not returned as verdict matches and do not
+appear in `signatures.by_name`. `/api/stats` exposes only aggregate structure
+`scans`, `candidates`, and `published: 0` while the inference remains
+experimental.
 
 Structural inference succeeds only when every inferred jump is valid and the
 last record ends exactly at the end of all bytes currently accumulated for the
