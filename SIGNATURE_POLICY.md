@@ -61,3 +61,39 @@ Rules may consume requestor-provided `flow.*` observations defined by
 [API.md](API.md), but must name each accepted field explicitly. Flow metadata
 must never be silently treated as raw-payload evidence, and requestor-provided
 `payload.*` fields are reserved and ignored.
+
+## Encrypted and inspected traffic
+
+Whenever the available evidence makes it meaningful, a protocol or application
+should have complementary signatures for both:
+
+1. encrypted traffic, classified from observable encryption-layer metadata;
+2. plaintext traffic, including content made available by TLS inspection.
+
+Signatures whose conclusion is inferred from encrypted traffic use the
+`enc.<layer>.*` namespace. The layer identifies the source of the evidence, for
+example:
+
+```text
+enc.tls.app.youtube.video
+enc.quic.app.youtube.video
+```
+
+Such rules may use evidence including SNI, ALPN, certificates, handshake
+properties, and encryption-layer fingerprints. Their name must preserve that
+the result is an inference from encrypted traffic rather than a classification
+based on the protected application bytes.
+
+Plaintext signatures retain the existing namespaces without an inspection,
+plaintext, or decrypted prefix:
+
+```text
+protocol.http2
+app.youtube.video
+```
+
+It does not matter whether the plaintext was observed directly or supplied by
+a TLS inspection component. If both encrypted-layer metadata and inspected
+plaintext are available for one flow, both signature families may run and both
+results may be reported. A plaintext match does not suppress the corresponding
+`enc.*` match.
