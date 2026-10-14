@@ -77,13 +77,14 @@ public:
         const std::string_view p(path);
         const std::string_view m(method);
         return (m == "GET" &&
-                (p == "/api/health" || p == "/api/status" || p == "/api/stats")) ||
+                (p == "/api/health" || p == "/api/status" || p == "/api/stats" ||
+                 p == "/api/diagnostics")) ||
                (m == "POST" && p == config_.path);
     }
 
     lmh::ConnectionState* create_state() override { return new RequestState(*this); }
 
-    int handleRequest(MHD_Connection* connection, const char* url, const char*,
+    int handleRequest(MHD_Connection* connection, const char* url, const char* method,
                       const char* upload_data, std::size_t* upload_data_size,
                       void** ptr) override {
         if (*ptr == nullptr) {
@@ -107,6 +108,8 @@ public:
         if (state.too_large) {
             status = 413;
             reply = {{"error", "request body too large"}};
+        } else if (std::string_view(url) == "/api/diagnostics") {
+            reply = diagnostics();
         } else if (std::string_view(url) == "/api/health" ||
                    std::string_view(url) == "/api/status" ||
                    std::string_view(url) == "/api/stats") {
@@ -115,6 +118,17 @@ public:
             reply = process(state.request_data, peer_ip(connection), status);
         }
         const auto body = reply.dump();
+        ++requests_total_;
+        request_bytes_.fetch_add(state.request_data.size(), std::memory_order_relaxed);
+        last_request_at_ms_.store(wallclock_ms(), std::memory_order_relaxed);
+        if(std::string_view(method) == "POST") ++post_requests_;
+        else ++get_requests_;
+        response_bytes_.fetch_add(body.size(), std::memory_order_relaxed);
+        last_response_at_ms_.store(wallclock_ms(), std::memory_order_relaxed);
+        last_status_.store(status, std::memory_order_relaxed);
+        if(status >= 500) ++responses_5xx_;
+        else if(status >= 400) ++responses_4xx_;
+        else if(status >= 200) ++responses_2xx_;
         auto* response = MHD_create_response_from_buffer(
             body.size(), const_cast<char*>(body.data()), MHD_RESPMEM_MUST_COPY);
         if (response == nullptr) return MHD_NO;
@@ -126,6 +140,37 @@ public:
     }
 
 private:
+    static std::uint64_t wallclock_ms() {
+        return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    }
+
+    nlohmann::json diagnostics() const {
+        const auto uptime_ms = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_).count());
+        return {
+            {"service", "siftd"},
+            {"generated_at_ms", wallclock_ms()},
+            {"uptime_ms", uptime_ms},
+            {"http", {
+                {"requests", requests_total_.load(std::memory_order_relaxed)},
+                {"get_requests", get_requests_.load(std::memory_order_relaxed)},
+                {"post_requests", post_requests_.load(std::memory_order_relaxed)},
+                {"request_bytes", request_bytes_.load(std::memory_order_relaxed)},
+                {"response_bytes", response_bytes_.load(std::memory_order_relaxed)},
+                {"responses_2xx", responses_2xx_.load(std::memory_order_relaxed)},
+                {"responses_4xx", responses_4xx_.load(std::memory_order_relaxed)},
+                {"responses_5xx", responses_5xx_.load(std::memory_order_relaxed)},
+                {"last_status", last_status_.load(std::memory_order_relaxed)},
+                {"last_request_at_ms", last_request_at_ms_.load(std::memory_order_relaxed)},
+                {"last_response_at_ms", last_response_at_ms_.load(std::memory_order_relaxed)},
+                {"decode_errors", decode_errors_.load(std::memory_order_relaxed)},
+            }},
+            {"engine", runtime_.status()},
+        };
+    }
+
     nlohmann::json process(const std::string& body, const std::string_view remote_ip,
                            unsigned& status) {
         const auto started = std::chrono::steady_clock::now();
@@ -134,12 +179,14 @@ private:
         if (std::string_view(body).starts_with(sxbn::magic)) {
             std::string error;
             if (!sxbn::decode(body, event, payload, error)) {
+                ++decode_errors_;
                 status = 400;
                 return {{"error", error}};
             }
         } else {
             event = nlohmann::json::parse(body, nullptr, false);
             if (event.is_discarded() || !event.is_object()) {
+                ++decode_errors_;
                 status = 400;
                 return {{"error", "invalid JSON"}};
             }
@@ -269,6 +316,19 @@ private:
     const ServerConfig& config_;
     Runtime& runtime_;
     std::atomic_uint64_t anonymous_sequence_{};
+    const std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
+    std::atomic_uint64_t requests_total_{};
+    std::atomic_uint64_t get_requests_{};
+    std::atomic_uint64_t post_requests_{};
+    std::atomic_uint64_t request_bytes_{};
+    std::atomic_uint64_t response_bytes_{};
+    std::atomic_uint64_t responses_2xx_{};
+    std::atomic_uint64_t responses_4xx_{};
+    std::atomic_uint64_t responses_5xx_{};
+    std::atomic_uint64_t decode_errors_{};
+    std::atomic_uint64_t last_request_at_ms_{};
+    std::atomic_uint64_t last_response_at_ms_{};
+    std::atomic_uint64_t last_status_{};
 };
 
 } // namespace

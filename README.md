@@ -66,6 +66,9 @@ available for deployment health checks. The snapshot includes flow lifecycle,
 directional traffic, payload sizes, per-signature matches, decisions, uptime,
 and inspection latency. End-to-end round-trip latency requires telemetry from
 Smithproxy and its communication broker and is therefore reported as pending.
+`GET /api/diagnostics` wraps this engine snapshot with Sift HTTP transport
+counters, byte totals, response classes, decode errors, and the timestamps and
+status of the latest completed request.
 
 All protocol and application signatures live exclusively in
 `signatures/default.yaml`. The build validates and compiles that pack into an
