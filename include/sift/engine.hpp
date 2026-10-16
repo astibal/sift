@@ -18,6 +18,18 @@
 
 namespace sift {
 
+struct RuntimeConfig {
+    std::size_t evidence_bytes_per_side{64U * 1024U};
+    std::size_t max_flows{10000};
+    std::uint64_t min_idle_ttl_seconds{10U * 60U};
+    std::uint64_t max_idle_ttl_seconds{24U * 60U * 60U};
+    std::uint64_t tombstone_ttl_seconds{30};
+    std::uint64_t sweep_interval_seconds{5};
+    std::size_t max_field_names_per_flow{128};
+    std::size_t max_values_per_field{64};
+    std::size_t max_structure_probes_per_flow{8};
+};
+
 struct Match {
     std::string signature;
     std::size_t begin{};
@@ -48,7 +60,7 @@ struct InspectionMetadata {
 
 class Runtime {
 public:
-    Runtime();
+    explicit Runtime(RuntimeConfig config = {});
     ~Runtime();
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
@@ -59,10 +71,13 @@ public:
     [[nodiscard]] Verdict inspect(std::string_view session, char side,
                                   std::string_view payload,
                                   const InspectionMetadata& metadata = {});
+    void start(const FlowKey& key);
     void record_total_delay(std::chrono::nanoseconds elapsed);
     void close(const FlowKey& key);
     void close(std::string_view session);
-    [[nodiscard]] nlohmann::json status() const;
+    [[nodiscard]] nlohmann::json status();
+    [[nodiscard]] nlohmann::json config() const;
+    bool configure(const nlohmann::json& update, std::string& error);
 
 private:
     struct Rule {
@@ -88,11 +103,20 @@ private:
         std::unordered_map<std::string, std::unordered_set<std::string>> fields;
         std::unordered_set<std::size_t> candidates;
         std::unordered_map<std::string, StructureProbe> structure_probes;
+        std::chrono::steady_clock::time_point last_activity{std::chrono::steady_clock::now()};
+        std::uint64_t left_bytes_seen{};
+        std::uint64_t right_bytes_seen{};
         hs_stream_t* left_scanner{};
         hs_stream_t* right_scanner{};
     };
 
     void close_scanners(Flow& flow);
+    void sweep_locked(std::chrono::steady_clock::time_point now, bool force = false);
+    void ensure_capacity_locked(std::chrono::steady_clock::time_point now,
+                                bool reserve_slot = true);
+    [[nodiscard]] std::chrono::seconds current_idle_ttl_locked() const;
+    [[nodiscard]] std::size_t active_evidence_bytes_locked() const;
+    [[nodiscard]] nlohmann::json config_locked() const;
     void load_signature_pack();
     [[nodiscard]] hs_database_t* compile_database(char side) const;
     [[nodiscard]] bool rule_matches(const Rule& rule, const Flow& flow) const;
@@ -101,6 +125,10 @@ private:
     std::vector<Rule> rules_;
     std::vector<ScanPattern> scan_patterns_;
     std::unordered_map<FlowKey, Flow, FlowKeyHash> flows_;
+    std::unordered_map<FlowKey, std::chrono::steady_clock::time_point, FlowKeyHash> tombstones_;
+    RuntimeConfig config_;
+    std::size_t required_evidence_bytes_{};
+    std::chrono::steady_clock::time_point next_sweep_{std::chrono::steady_clock::now()};
     std::unordered_set<std::string> tenants_seen_;
     std::unordered_set<std::string> instances_seen_;
     std::uint64_t ip_fallback_requests_{};
@@ -111,6 +139,14 @@ private:
     std::unordered_map<std::string, std::uint64_t> signature_matches_;
     std::uint64_t flows_seen_{};
     std::uint64_t flows_closed_{};
+    std::uint64_t flows_started_{};
+    std::uint64_t flows_expired_{};
+    std::uint64_t flows_evicted_{};
+    std::uint64_t late_payloads_dropped_{};
+    std::uint64_t metadata_fields_dropped_{};
+    std::uint64_t metadata_values_dropped_{};
+    std::size_t peak_flows_{};
+    std::size_t peak_evidence_bytes_{};
     std::uint64_t payloads_{};
     std::uint64_t bytes_{};
     std::uint64_t matches_{};

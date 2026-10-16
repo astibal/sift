@@ -58,7 +58,7 @@ signatures:
     match: [{side: L, op: hex_at, offset: 0, value: 123400010a}]
     candidates: [{side: L, regex: '^\x12\x34\x00\x01\x0a'}]
   - name: protocol.ajp13.cpong
-    match: [{side: R, op: hex_at, offset: 0, value: 4142000109}]
+    match: [{side: R, op: hex_at, offset: 0, value: "4142000109"}]
     candidates: [{side: R, regex: '^AB\x00\x01\x09'}]
   - name: protocol.memcached.ascii
     match: [{side: L, op: prefix_any, values: ["get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ", "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r", flush_all]}]

@@ -68,6 +68,10 @@ std::string identifier_field(const nlohmann::json& object, const char* name) {
     return {};
 }
 
+bool loopback_peer(const std::string_view address) {
+    return address == "127.0.0.1" || address == "::1";
+}
+
 class Controller final : public lmh::Controller {
 public:
     Controller(const ServerConfig& config, Runtime& runtime)
@@ -78,8 +82,8 @@ public:
         const std::string_view m(method);
         return (m == "GET" &&
                 (p == "/api/health" || p == "/api/status" || p == "/api/stats" ||
-                 p == "/api/diagnostics")) ||
-               (m == "POST" && p == config_.path);
+                 p == "/api/diagnostics" || p == "/api/config")) ||
+               (m == "POST" && (p == config_.path || p == "/api/config"));
     }
 
     lmh::ConnectionState* create_state() override { return new RequestState(*this); }
@@ -110,6 +114,25 @@ public:
             reply = {{"error", "request body too large"}};
         } else if (std::string_view(url) == "/api/diagnostics") {
             reply = diagnostics();
+        } else if(std::string_view(url) == "/api/config") {
+            const auto remote_ip = peer_ip(connection);
+            if(std::string_view(method) == "GET") {
+                reply = runtime_.config();
+            } else if(!loopback_peer(remote_ip)) {
+                status = 403;
+                reply = {{"error", "configuration updates require a loopback client"}};
+            } else {
+                const auto update = nlohmann::json::parse(
+                    state.request_data, nullptr, false);
+                std::string error;
+                if(update.is_discarded() || !runtime_.configure(update, error)) {
+                    status = 400;
+                    reply = {{"error", update.is_discarded()
+                        ? "invalid JSON" : error}};
+                } else {
+                    reply = runtime_.config();
+                }
+            }
         } else if (std::string_view(url) == "/api/health" ||
                    std::string_view(url) == "/api/status" ||
                    std::string_view(url) == "/api/stats") {
@@ -196,6 +219,9 @@ private:
         if (action == "info") {
             return {{"action", "info-response"},
                     {"protocols", {{"connection-content", {"sxbn-001"}}}},
+                    {"lifecycle", {{"connection-start", true},
+                                    {"connection-stop", true},
+                                    {"late-content-tombstones", true}}},
                     {"identity", {{"version", 1},
                                   {"flow_key", {"tenant", "instance", "session"}},
                                   {"fallback", "peer-ip"}}},
@@ -205,9 +231,18 @@ private:
         const auto identity = resolve_identity(event, remote_ip);
         const auto event_session = string_field(event, "id");
 
-        if (action == "connection-stop") {
-            if(!event_session.empty()) {
-                runtime_.close(FlowKey{identity, event_session});
+        if(action == "connection-start" || action == "connection-stop") {
+            auto session = event_session;
+            if(session.empty()) {
+                const auto details = event.value("details", nlohmann::json::object());
+                const auto info = details.value("info", nlohmann::json::object());
+                session = string_field(info, "session");
+            }
+
+            if(!session.empty()) {
+                const FlowKey key{identity, std::move(session)};
+                if(action == "connection-start") runtime_.start(key);
+                else runtime_.close(key);
             }
 
             return nlohmann::json::object();

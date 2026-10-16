@@ -134,6 +134,12 @@ one-request anonymous flows and immediately discarded. They can classify one
 payload but cannot accumulate stream state or collide with another anonymous
 request.
 
+`connection-start` is optional and idempotent. It pre-creates or touches the
+flow but never clears evidence already received. `connection-stop` removes the
+flow and installs a short tombstone, so a late asynchronous start or content
+event cannot resurrect the connection. Content still creates a missing flow
+for compatibility with requestors that do not emit lifecycle events.
+
 Smithproxy sends the explicit identity fields. Its corresponding settings are:
 
 ```text
@@ -146,6 +152,43 @@ An empty Smithproxy instance setting falls back to its configured webhook
 requestor, so Sift still receives an explicit instance identity. Smithproxy
 snapshots its Sift identity for the lifetime of the process; changing either
 identity setting requires a restart and cannot split an active flow.
+
+## Runtime flow limits
+
+Sift retains only a bounded prefix of each direction as verifier evidence.
+Hyperscan continues consuming every byte through its streaming state; traffic
+counters therefore describe the complete input even after the evidence prefix
+is full. The prefix cannot be reduced below the largest requirement derived
+from the compiled signature pack.
+
+Idle flow TTL decreases logarithmically as the flow table fills: it is 24 hours
+for an empty table and reaches 10 minutes at capacity by default. A periodic
+lazy sweep removes expired flows, and the oldest flow is evicted if the hard
+capacity is reached first. Metadata names, values, structural probes, and stop
+tombstones are bounded independently.
+
+`GET /api/config` returns the effective limits and current computed TTL.
+`POST /api/config` applies a partial JSON update without restarting Sift and is
+accepted only from a loopback client. Unknown keys, unsafe evidence limits,
+out-of-range values, and inverted TTL bounds are rejected atomically. Defaults:
+
+```json
+{
+  "evidence_bytes_per_side": 65536,
+  "max_flows": 10000,
+  "min_idle_ttl_seconds": 600,
+  "max_idle_ttl_seconds": 86400,
+  "tombstone_ttl_seconds": 30,
+  "sweep_interval_seconds": 5,
+  "max_field_names_per_flow": 128,
+  "max_values_per_field": 64,
+  "max_structure_probes_per_flow": 8
+}
+```
+
+`GET /api/stats` exposes active, expired and evicted flow counts, table
+utilization, current dynamic TTL, tombstones, dropped late payloads, retained
+evidence memory, and dropped metadata counts.
 
 ## Evidence and trust
 

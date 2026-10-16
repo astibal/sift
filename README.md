@@ -69,6 +69,11 @@ Smithproxy and its communication broker and is therefore reported as pending.
 `GET /api/diagnostics` wraps this engine snapshot with Sift HTTP transport
 counters, byte totals, response classes, decode errors, and the timestamps and
 status of the latest completed request.
+Bounded flow evidence, a utilization-sensitive idle TTL, hard flow capacity,
+and late-event tombstones prevent missing or reordered lifecycle callbacks from
+growing runtime state without limit. Effective limits are visible through
+`GET /api/config`; loopback clients may update them online with a partial
+`POST /api/config` request. See [API.md](API.md#runtime-flow-limits).
 
 All protocol and application signatures live exclusively in
 `signatures/default.yaml`. The build validates and compiles that pack into an

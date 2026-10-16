@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <hs/hs.h>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -109,6 +111,33 @@ void Runtime::load_signature_pack() {
     for (const auto& source : pack.at("signatures")) {
         Rule rule{source.at("name").get<std::string>(), source.at("match"),
                   source.contains("candidates") && !source.at("candidates").empty()};
+        for(const auto& clause : rule.clauses) {
+            if(clause.contains("field")) continue;
+
+            const auto op = clause.at("op").get<std::string>();
+            std::size_t needed{};
+            if(op == "tls_handshake") {
+                needed = 11;
+            } else if(op == "hex_at") {
+                const auto encoded = clause.at("value").get<std::string>();
+                needed = clause.value("offset", 0U) + decode_hex(encoded).size();
+            } else {
+                std::vector<std::string> values;
+                if(clause.contains("values")) {
+                    values = clause.at("values").get<std::vector<std::string>>();
+                } else if(clause.contains("value")) {
+                    values.push_back(clause.at("value").get<std::string>());
+                }
+                const auto longest = std::accumulate(
+                    values.begin(), values.end(), std::size_t{},
+                    [](const std::size_t current, const std::string& value) {
+                        return std::max(current, value.size());
+                    });
+                needed = op == "line_prefix_within"
+                    ? clause.value("limit", 0U) + longest + 1U : longest;
+            }
+            required_evidence_bytes_ = std::max(required_evidence_bytes_, needed);
+        }
         const auto rule_id = static_cast<unsigned>(rules_.size());
         rules_.push_back(std::move(rule));
         if (!source.contains("candidates")) continue;
@@ -208,9 +237,11 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
     });
 }
 
-Runtime::Runtime() {
+Runtime::Runtime(RuntimeConfig config) : config_(config) {
     try {
         load_signature_pack();
+        config_.evidence_bytes_per_side = std::max(
+            config_.evidence_bytes_per_side, required_evidence_bytes_);
         left_database_ = compile_database('L');
         right_database_ = compile_database('R');
         if (hs_alloc_scratch(left_database_, &scratch_) != HS_SUCCESS ||
@@ -221,6 +252,72 @@ Runtime::Runtime() {
         if (left_database_) hs_free_database(left_database_);
         if (right_database_) hs_free_database(right_database_);
         throw;
+    }
+}
+
+std::chrono::seconds Runtime::current_idle_ttl_locked() const {
+    if(config_.max_flows == 0) {
+        return std::chrono::seconds(config_.min_idle_ttl_seconds);
+    }
+
+    const auto utilization = std::min(
+        1.0, static_cast<double>(flows_.size()) /
+             static_cast<double>(config_.max_flows));
+    const auto minimum = static_cast<double>(config_.min_idle_ttl_seconds);
+    const auto maximum = static_cast<double>(config_.max_idle_ttl_seconds);
+    if(minimum == maximum) {
+        return std::chrono::seconds(config_.min_idle_ttl_seconds);
+    }
+
+    const auto seconds = maximum * std::pow(minimum / maximum, utilization);
+    return std::chrono::seconds(static_cast<std::uint64_t>(seconds));
+}
+
+std::size_t Runtime::active_evidence_bytes_locked() const {
+    return std::accumulate(
+        flows_.begin(), flows_.end(), std::size_t{},
+        [](const std::size_t total, const auto& entry) {
+            return total + entry.second.left.size() + entry.second.right.size();
+        });
+}
+
+void Runtime::sweep_locked(const std::chrono::steady_clock::time_point now,
+                           const bool force) {
+    if(!force && now < next_sweep_) return;
+
+    const auto ttl = current_idle_ttl_locked();
+    for(auto flow = flows_.begin(); flow != flows_.end();) {
+        if(now - flow->second.last_activity < ttl) {
+            ++flow;
+            continue;
+        }
+
+        close_scanners(flow->second);
+        flow = flows_.erase(flow);
+        ++flows_expired_;
+    }
+
+    for(auto tombstone = tombstones_.begin(); tombstone != tombstones_.end();) {
+        if(tombstone->second > now) ++tombstone;
+        else tombstone = tombstones_.erase(tombstone);
+    }
+
+    next_sweep_ = now + std::chrono::seconds(config_.sweep_interval_seconds);
+}
+
+void Runtime::ensure_capacity_locked(const std::chrono::steady_clock::time_point now,
+                                     const bool reserve_slot) {
+    sweep_locked(now, true);
+
+    const auto target = config_.max_flows - (reserve_slot ? 1U : 0U);
+    while(flows_.size() > target && !flows_.empty()) {
+        const auto oldest = std::min_element(
+            flows_.begin(), flows_.end(), [](const auto& left, const auto& right) {
+                return left.second.last_activity < right.second.last_activity;
+            });
+        close_scanners(oldest->second);
+        flows_.erase(oldest);
+        ++flows_evicted_;
     }
 }
 
@@ -248,9 +345,27 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
                          const InspectionMetadata& metadata) {
     const auto engine_started = std::chrono::steady_clock::now();
     std::scoped_lock guard(lock_);
-    auto [flow_it, inserted] = flows_.try_emplace(key);
+    const auto now = std::chrono::steady_clock::now();
+    sweep_locked(now);
 
-    if (inserted) ++flows_seen_;
+    if(auto stopped = tombstones_.find(key);
+       stopped != tombstones_.end() && stopped->second > now) {
+        ++late_payloads_dropped_;
+        ++accepted_;
+        return {};
+    }
+
+    auto flow_it = flows_.find(key);
+    bool inserted = false;
+    if(flow_it == flows_.end()) {
+        ensure_capacity_locked(now);
+        std::tie(flow_it, inserted) = flows_.try_emplace(key);
+    }
+
+    if(inserted) {
+        ++flows_seen_;
+        peak_flows_ = std::max(peak_flows_, flows_.size());
+    }
 
     tenants_seen_.insert(key.source.tenant);
     instances_seen_.insert(key.source.tenant + "\n" +
@@ -261,18 +376,35 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
 
     const auto is_right = side == 'R' || side == 'w';
     auto& flow = flow_it->second;
+    flow.last_activity = now;
     for (const auto& [field, values] : metadata.fields) {
+        if(!flow.fields.contains(field) &&
+           flow.fields.size() >= config_.max_field_names_per_flow) {
+            ++metadata_fields_dropped_;
+            continue;
+        }
+
         auto& stored = flow.fields[field];
         for (const auto& value : values) {
-            if (!value.empty()) stored.emplace(value);
+            if(value.empty() || stored.contains(value)) continue;
+            if(stored.size() >= config_.max_values_per_field) {
+                ++metadata_values_dropped_;
+                continue;
+            }
+            stored.emplace(value);
         }
     }
     auto& stream = is_right ? flow.right : flow.left;
+    auto& stream_bytes_seen = is_right ? flow.right_bytes_seen : flow.left_bytes_seen;
     auto*& scanner = is_right ? flow.right_scanner : flow.left_scanner;
     auto* database = is_right ? right_database_ : left_database_;
     if (scanner == nullptr && hs_open_stream(database, 0, &scanner) != HS_SUCCESS)
         throw std::runtime_error("cannot open Hyperscan stream");
-    stream.append(payload);
+    const auto evidence_available = config_.evidence_bytes_per_side - stream.size();
+    stream.append(payload.data(), std::min(payload.size(), evidence_available));
+    stream_bytes_seen += payload.size();
+    peak_evidence_bytes_ = std::max(
+        peak_evidence_bytes_, active_evidence_bytes_locked());
     ScanContext scan{flow.candidates};
     if (hs_scan_stream(scanner, payload.data(), static_cast<unsigned>(payload.size()),
                        0, scratch_, record_candidate, &scan) != HS_SUCCESS)
@@ -310,7 +442,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
     for (const auto& rule : rules_) {
         if (rule.candidate_driven || flow.matches.contains(rule.name)) continue;
         if (rule_matches(rule, flow)) {
-            record_match(rule.name, 0, stream.empty() ? 0 : stream.size() - 1);
+            record_match(rule.name, 0, stream_bytes_seen == 0 ? 0 : stream_bytes_seen - 1);
         }
     }
 
@@ -325,7 +457,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
             ++candidate;
             continue;
         }
-        record_match(rule.name, 0, stream.empty() ? 0 : stream.size() - 1);
+        record_match(rule.name, 0, stream_bytes_seen == 0 ? 0 : stream_bytes_seen - 1);
         candidate = flow.candidates.erase(candidate);
     }
 
@@ -337,7 +469,8 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
             std::string(encoding);
         auto structure = flow.structure_probes.find(structure_key);
 
-        if(structure == flow.structure_probes.end() && flow.structure_probes.size() < 64) {
+        if(structure == flow.structure_probes.end() &&
+           flow.structure_probes.size() < config_.max_structure_probes_per_flow) {
             structure = flow.structure_probes.emplace(
                 structure_key, Flow::StructureProbe{}).first;
         }
@@ -411,6 +544,26 @@ Verdict Runtime::inspect(const std::string_view session, const char side,
                    side, payload, metadata);
 }
 
+void Runtime::start(const FlowKey& key) {
+    std::scoped_lock guard(lock_);
+    const auto now = std::chrono::steady_clock::now();
+    sweep_locked(now);
+    ++flows_started_;
+
+    if(auto stopped = tombstones_.find(key);
+       stopped != tombstones_.end() && stopped->second > now) return;
+
+    auto flow = flows_.find(key);
+    if(flow == flows_.end()) {
+        ensure_capacity_locked(now);
+        flow = flows_.try_emplace(key).first;
+        ++flows_seen_;
+        peak_flows_ = std::max(peak_flows_, flows_.size());
+    }
+
+    flow->second.last_activity = now;
+}
+
 void Runtime::record_total_delay(const std::chrono::nanoseconds elapsed) {
     const auto value = static_cast<std::uint64_t>(elapsed.count());
     std::scoped_lock guard(lock_);
@@ -424,21 +577,145 @@ void Runtime::record_total_delay(const std::chrono::nanoseconds elapsed) {
 
 void Runtime::close(const FlowKey& key) {
     std::scoped_lock guard(lock_);
+    const auto now = std::chrono::steady_clock::now();
+    sweep_locked(now);
     const auto found = flows_.find(key);
 
-    if (found == flows_.end()) return;
+    if(found != flows_.end()) {
+        close_scanners(found->second);
+        flows_.erase(found);
+        ++flows_closed_;
+    }
 
-    close_scanners(found->second);
-    flows_.erase(found);
-    ++flows_closed_;
+    tombstones_[key] = now + std::chrono::seconds(config_.tombstone_ttl_seconds);
+    const auto tombstone_limit = config_.max_flows * 2U;
+    while(tombstones_.size() > tombstone_limit && !tombstones_.empty()) {
+        const auto oldest = std::min_element(
+            tombstones_.begin(), tombstones_.end(),
+            [](const auto& left, const auto& right) {
+                return left.second < right.second;
+            });
+        tombstones_.erase(oldest);
+    }
 }
 
 void Runtime::close(const std::string_view session) {
     close(FlowKey{{"default", "local", false}, std::string(session)});
 }
 
-nlohmann::json Runtime::status() const {
+nlohmann::json Runtime::config_locked() const {
+    return {
+        {"evidence_bytes_per_side", config_.evidence_bytes_per_side},
+        {"required_evidence_bytes", required_evidence_bytes_},
+        {"max_flows", config_.max_flows},
+        {"min_idle_ttl_seconds", config_.min_idle_ttl_seconds},
+        {"max_idle_ttl_seconds", config_.max_idle_ttl_seconds},
+        {"current_idle_ttl_seconds", current_idle_ttl_locked().count()},
+        {"tombstone_ttl_seconds", config_.tombstone_ttl_seconds},
+        {"sweep_interval_seconds", config_.sweep_interval_seconds},
+        {"max_field_names_per_flow", config_.max_field_names_per_flow},
+        {"max_values_per_field", config_.max_values_per_field},
+        {"max_structure_probes_per_flow", config_.max_structure_probes_per_flow}
+    };
+}
+
+nlohmann::json Runtime::config() const {
     std::scoped_lock guard(lock_);
+    return config_locked();
+}
+
+bool Runtime::configure(const nlohmann::json& update, std::string& error) {
+    if(!update.is_object()) {
+        error = "configuration must be a JSON object";
+        return false;
+    }
+
+    std::scoped_lock guard(lock_);
+    auto next = config_;
+    const auto read_size = [&](const char* name, std::size_t& target,
+                               const std::size_t minimum,
+                               const std::size_t maximum) {
+        const auto value = update.find(name);
+        if(value == update.end()) return true;
+        if(!value->is_number_unsigned() &&
+           (!value->is_number_integer() || value->get<std::int64_t>() < 0)) {
+            error = std::string(name) + " must be an unsigned integer";
+            return false;
+        }
+
+        const auto parsed = value->get<std::uint64_t>();
+        if(parsed < minimum || parsed > maximum) {
+            error = std::string(name) + " is outside the allowed range";
+            return false;
+        }
+        target = static_cast<std::size_t>(parsed);
+        return true;
+    };
+    const auto read_seconds = [&](const char* name, std::uint64_t& target,
+                                  const std::uint64_t minimum,
+                                  const std::uint64_t maximum) {
+        const auto value = update.find(name);
+        if(value == update.end()) return true;
+        if(!value->is_number_unsigned() &&
+           (!value->is_number_integer() || value->get<std::int64_t>() < 0)) {
+            error = std::string(name) + " must be an unsigned integer";
+            return false;
+        }
+
+        const auto parsed = value->get<std::uint64_t>();
+        if(parsed < minimum || parsed > maximum) {
+            error = std::string(name) + " is outside the allowed range";
+            return false;
+        }
+        target = parsed;
+        return true;
+    };
+
+    static const std::unordered_set<std::string> known{
+        "evidence_bytes_per_side", "max_flows", "min_idle_ttl_seconds",
+        "max_idle_ttl_seconds", "tombstone_ttl_seconds", "sweep_interval_seconds",
+        "max_field_names_per_flow", "max_values_per_field",
+        "max_structure_probes_per_flow"};
+    for(auto item = update.begin(); item != update.end(); ++item) {
+        if(!known.contains(item.key())) {
+            error = "unknown configuration field: " + item.key();
+            return false;
+        }
+    }
+
+    if(!read_size("evidence_bytes_per_side", next.evidence_bytes_per_side,
+                  required_evidence_bytes_, 16U * 1024U * 1024U) ||
+       !read_size("max_flows", next.max_flows, 1, 1000000) ||
+       !read_seconds("min_idle_ttl_seconds", next.min_idle_ttl_seconds, 10, 86400) ||
+       !read_seconds("max_idle_ttl_seconds", next.max_idle_ttl_seconds, 10, 604800) ||
+       !read_seconds("tombstone_ttl_seconds", next.tombstone_ttl_seconds, 1, 3600) ||
+       !read_seconds("sweep_interval_seconds", next.sweep_interval_seconds, 1, 300) ||
+       !read_size("max_field_names_per_flow", next.max_field_names_per_flow, 1, 4096) ||
+       !read_size("max_values_per_field", next.max_values_per_field, 1, 4096) ||
+       !read_size("max_structure_probes_per_flow",
+                  next.max_structure_probes_per_flow, 1, 4096)) return false;
+
+    if(next.min_idle_ttl_seconds > next.max_idle_ttl_seconds) {
+        error = "min_idle_ttl_seconds must not exceed max_idle_ttl_seconds";
+        return false;
+    }
+
+    config_ = next;
+    for(auto& [_, flow] : flows_) {
+        flow.left.resize(std::min(flow.left.size(), config_.evidence_bytes_per_side));
+        flow.right.resize(std::min(flow.right.size(), config_.evidence_bytes_per_side));
+        while(flow.structure_probes.size() > config_.max_structure_probes_per_flow) {
+            flow.structure_probes.erase(flow.structure_probes.begin());
+        }
+    }
+    ensure_capacity_locked(std::chrono::steady_clock::now(), false);
+    next_sweep_ = std::chrono::steady_clock::now();
+    return true;
+}
+
+nlohmann::json Runtime::status() {
+    std::scoped_lock guard(lock_);
+    sweep_locked(std::chrono::steady_clock::now());
     auto signatures = nlohmann::json::object();
     for (const auto& rule : rules_) {
         const auto found = signature_matches_.find(rule.name);
@@ -459,6 +736,9 @@ nlohmann::json Runtime::status() const {
         : ns_to_us(engine_delay_total_ns_) / static_cast<double>(engine_delay_samples_);
     const auto average_total_delay = total_delay_samples_ == 0 ? 0.0
         : ns_to_us(total_delay_total_ns_) / static_cast<double>(total_delay_samples_);
+    const auto active_evidence = active_evidence_bytes_locked();
+    const auto utilization = config_.max_flows == 0 ? 0.0
+        : static_cast<double>(flows_.size()) / static_cast<double>(config_.max_flows);
     return {
         {"service", "siftd"}, {"engine", "compiled-yaml-hyperscan"},
         {"scanner", {{"name", "hyperscan"}, {"version", hs_version()},
@@ -475,7 +755,20 @@ nlohmann::json Runtime::status() const {
                       {"instances_seen", instances_seen_.size()},
                       {"ip_fallback_requests", ip_fallback_requests_}}},
         {"flows", {{"active", flows_.size()}, {"seen", flows_seen_},
-                   {"closed", flows_closed_}}},
+                   {"started", flows_started_}, {"closed", flows_closed_},
+                   {"expired", flows_expired_}, {"evicted", flows_evicted_},
+                   {"peak", peak_flows_}, {"capacity", config_.max_flows},
+                   {"utilization", utilization},
+                   {"idle_ttl_seconds", current_idle_ttl_locked().count()},
+                   {"tombstones", tombstones_.size()},
+                   {"late_payloads_dropped", late_payloads_dropped_}}},
+        {"memory", {{"evidence_bytes", active_evidence},
+                    {"peak_evidence_bytes", peak_evidence_bytes_},
+                    {"evidence_limit_per_side", config_.evidence_bytes_per_side},
+                    {"required_evidence_bytes", required_evidence_bytes_}}},
+        {"limits", {{"metadata_fields_dropped", metadata_fields_dropped_},
+                    {"metadata_values_dropped", metadata_values_dropped_}}},
+        {"config", config_locked()},
         {"traffic", {{"payloads", payloads_}, {"bytes", bytes_},
                      {"sides", {{"L", {{"payloads", left_payloads_}, {"bytes", left_bytes_}}},
                                 {"R", {{"payloads", right_payloads_}, {"bytes", right_bytes_}}}}}}},

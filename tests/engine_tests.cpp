@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
+#include <thread>
 
 namespace {
 int failures{};
@@ -84,6 +85,110 @@ int main() {
           "runtime structure candidate was not counted");
     check(structure_runtime.status().at("structure").at("published") == 0,
           "runtime reports published structure candidates");
+
+    sift::Runtime bounded_runtime;
+    const auto required_evidence = bounded_runtime.config().at(
+        "required_evidence_bytes").get<std::size_t>();
+    std::string config_error;
+    check(bounded_runtime.configure(
+              {{"evidence_bytes_per_side", required_evidence},
+               {"max_flows", 2},
+               {"min_idle_ttl_seconds", 600},
+               {"max_idle_ttl_seconds", 86400}},
+              config_error),
+          "valid runtime configuration was rejected");
+    (void)bounded_runtime.inspect("bounded-a", 'L', std::string(1024 * 1024, 'x'));
+    auto bounded_status = bounded_runtime.status();
+    check(bounded_status.at("memory").at("evidence_bytes") == required_evidence,
+          "flow evidence exceeded its configured prefix limit");
+    check(bounded_status.at("traffic").at("bytes") == 1024 * 1024,
+          "bounded evidence truncated traffic accounting");
+    const auto sparse_ttl = bounded_status.at("flows").at(
+        "idle_ttl_seconds").get<std::uint64_t>();
+    (void)bounded_runtime.inspect("bounded-b", 'L', "payload");
+    const auto full_ttl = bounded_runtime.status().at("flows").at(
+        "idle_ttl_seconds").get<std::uint64_t>();
+    check(full_ttl == 600, "full flow table did not select minimum idle TTL");
+    check(sparse_ttl > full_ttl, "idle TTL did not shrink with table utilization");
+    (void)bounded_runtime.inspect("bounded-c", 'L', "payload");
+    bounded_status = bounded_runtime.status();
+    check(bounded_status.at("flows").at("active") == 2,
+          "flow hard cap was not enforced");
+    check(bounded_status.at("flows").at("evicted") == 1,
+          "oldest flow eviction was not counted");
+    check(!bounded_runtime.configure({{"evidence_bytes_per_side", 1}}, config_error),
+          "unsafe evidence limit was accepted");
+    check(!bounded_runtime.configure(nlohmann::json::array(), config_error),
+          "non-object runtime configuration was accepted");
+    check(!bounded_runtime.configure({{"unknown", 1}}, config_error),
+          "unknown runtime configuration field was accepted");
+    check(!bounded_runtime.configure({{"max_flows", "many"}}, config_error),
+          "non-numeric runtime configuration was accepted");
+    check(!bounded_runtime.configure({{"max_flows", -1}}, config_error),
+          "negative runtime configuration was accepted");
+    check(!bounded_runtime.configure({{"max_flows", 0}}, config_error),
+          "out-of-range runtime configuration was accepted");
+    check(!bounded_runtime.configure(
+              {{"min_idle_ttl_seconds", 20}, {"max_idle_ttl_seconds", 10}},
+              config_error),
+          "inverted idle TTL range was accepted");
+    check(bounded_runtime.configure(
+              {{"tombstone_ttl_seconds", 2},
+               {"sweep_interval_seconds", 1},
+               {"max_field_names_per_flow", 1},
+               {"max_values_per_field", 1},
+               {"max_structure_probes_per_flow", 1}},
+              config_error),
+          "complete valid runtime configuration was rejected");
+    check(bounded_runtime.config().at("max_structure_probes_per_flow") == 1,
+          "runtime configuration was not applied");
+
+    sift::InspectionMetadata excessive_metadata;
+    excessive_metadata.fields["flow.first"] = {"one"};
+    (void)bounded_runtime.inspect("metadata-limits", 'L', "payload", excessive_metadata);
+    excessive_metadata.fields["flow.first"] = {"two"};
+    excessive_metadata.fields["flow.second"] = {"three"};
+    (void)bounded_runtime.inspect("metadata-limits", 'L', "payload", excessive_metadata);
+    bounded_status = bounded_runtime.status();
+    check(bounded_status.at("limits").at("metadata_fields_dropped") >= 1,
+          "metadata field limit was not enforced");
+    check(bounded_status.at("limits").at("metadata_values_dropped") >= 1,
+          "metadata value limit was not enforced");
+
+    sift::RuntimeConfig expiring_config;
+    expiring_config.min_idle_ttl_seconds = 0;
+    expiring_config.max_idle_ttl_seconds = 0;
+    expiring_config.sweep_interval_seconds = 0;
+    expiring_config.tombstone_ttl_seconds = 0;
+    sift::Runtime expiring_runtime(expiring_config);
+    (void)expiring_runtime.inspect("expire", 'L', "payload");
+    auto expiring_status = expiring_runtime.status();
+    check(expiring_status.at("flows").at("active") == 0,
+          "zero-TTL flow was not expired by status sweep");
+    check(expiring_status.at("flows").at("expired") == 1,
+          "idle flow expiration was not counted");
+    expiring_runtime.close("already-gone");
+    check(expiring_runtime.status().at("flows").at("tombstones") == 0,
+          "expired tombstone was retained");
+
+    sift::Runtime lifecycle_runtime;
+    const sift::FlowKey lifecycle_key{{"default", "edge", false}, "lifecycle"};
+    lifecycle_runtime.start(lifecycle_key);
+    (void)lifecycle_runtime.inspect(lifecycle_key, 'L', "GET / HTTP/1.1\r\n");
+    lifecycle_runtime.start(lifecycle_key);
+    check(lifecycle_runtime.status().at("flows").at("active") == 1,
+          "idempotent connection-start duplicated or reset a flow");
+    lifecycle_runtime.close(lifecycle_key);
+    check(lifecycle_runtime.inspect(lifecycle_key, 'L', "late").matches.empty(),
+          "late tombstoned payload produced a verdict match");
+    lifecycle_runtime.start(lifecycle_key);
+    const auto lifecycle_status = lifecycle_runtime.status();
+    check(lifecycle_status.at("flows").at("active") == 0,
+          "late connection-start resurrected a stopped flow");
+    check(lifecycle_status.at("flows").at("late_payloads_dropped") == 1,
+          "late tombstoned payload was not counted");
+    check(lifecycle_status.at("flows").at("tombstones") == 1,
+          "connection-stop tombstone is missing");
 
     sift::Runtime ranged_runtime;
     sift::InspectionMetadata empty_l7;

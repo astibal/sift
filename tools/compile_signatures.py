@@ -39,6 +39,8 @@ def main() -> None:
                 raise SystemExit(f"signature {rule['name']} has an invalid field name")
             if "value" not in clause and "values" not in clause and clause["op"] != "tls_handshake":
                 raise SystemExit(f"signature {rule['name']} clause has no value")
+            if clause["op"] == "hex_at" and not isinstance(clause.get("value"), str):
+                raise SystemExit(f"signature {rule['name']} hex_at value must be a quoted string")
         if rule.get("candidates") is not None and not isinstance(rule["candidates"], list):
             raise SystemExit(f"signature {rule['name']} candidates must be a list")
         for candidate in rule.get("candidates", []):

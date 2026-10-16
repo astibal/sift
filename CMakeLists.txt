@@ -57,6 +57,9 @@ if(BUILD_TESTING)
     add_executable(sift_tests tests/engine_tests.cpp)
     target_link_libraries(sift_tests PRIVATE sift_core)
     add_test(NAME sift_tests COMMAND sift_tests)
+    add_test(NAME sift_server_tests
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/server_tests.py
+            $<TARGET_FILE:siftd>)
     add_test(NAME sift_incubator_validate
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_incubator.py
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/core.yaml
