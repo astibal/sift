@@ -25,6 +25,16 @@ std::string normalized_hostname(std::string_view hostname) {
     return result;
 }
 
+bool starts_with_ci(const std::string_view stream, const std::string_view prefix) {
+    if(stream.size() < prefix.size()) return false;
+
+    return std::equal(
+        prefix.begin(), prefix.end(), stream.begin(), [](const char left, const char right) {
+            return std::tolower(static_cast<unsigned char>(left)) ==
+                   std::tolower(static_cast<unsigned char>(right));
+        });
+}
+
 bool domain_is(const std::string_view hostname, const std::string_view domain) {
     return hostname == domain ||
            (hostname.size() > domain.size() && hostname.ends_with(domain) &&
@@ -118,6 +128,8 @@ void Runtime::load_signature_pack() {
             std::size_t needed{};
             if(op == "tls_handshake") {
                 needed = 11;
+            } else if(op == "decimal_prefix") {
+                needed = clause.at("digits").get<std::size_t>() + 1U;
             } else if(op == "hex_at") {
                 const auto encoded = clause.at("value").get<std::string>();
                 needed = clause.value("offset", 0U) + decode_hex(encoded).size();
@@ -188,6 +200,23 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
         if (op == "prefix" || op == "prefix_any") {
             return std::any_of(candidates.begin(), candidates.end(),
                                [stream](const auto& value) { return stream.starts_with(value); });
+        }
+        if(op == "prefix_any_ci") {
+            return std::any_of(candidates.begin(), candidates.end(),
+                               [stream](const auto& value) {
+                                   return starts_with_ci(stream, value);
+                               });
+        }
+        if(op == "decimal_prefix") {
+            const auto digits = clause.at("digits").get<std::size_t>();
+            const auto separators = clause.at("separators").get<std::string>();
+            if(stream.size() <= digits) return false;
+
+            return std::all_of(
+                       stream.begin(), stream.begin() + static_cast<std::ptrdiff_t>(digits),
+                       [](const char value) {
+                           return std::isdigit(static_cast<unsigned char>(value)) != 0;
+                       }) && separators.find(stream[digits]) != std::string::npos;
         }
         if (op == "hex_at") {
             const auto bytes = decode_hex(candidates.at(0));

@@ -63,6 +63,17 @@ signatures:
   - name: protocol.memcached.ascii
     match: [{side: L, op: prefix_any, values: ["get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ", "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r", flush_all]}]
     candidates: [{side: L, regex: '^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) '}, {side: L, regex: '^(stats|version)\x0d'}, {side: L, regex: '^flush_all'}]
+  - name: protocol.smtp
+    match: [{side: L, op: prefix_any_ci, values: ["EHLO ", "HELO "]}, {side: R, op: decimal_prefix, digits: 3, separators: " -"}]
+    candidates: [{side: L, regex: '^([Ee][Hh][Ll][Oo]|[Hh][Ee][Ll][Oo]) '}, {side: R, regex: '^[0-9]{3}[ -]'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/smtp/dpd.sig}]
+  - name: protocol.imap
+    match: [{side: R, op: prefix_any_ci, values: ["* OK ", "* PREAUTH ", "* BYE "]}]
+    candidates: [{side: R, regex: '^\* ([Oo][Kk]|[Pp][Rr][Ee][Aa][Uu][Tt][Hh]|[Bb][Yy][Ee]) '}]
+    sources: [{project: suricata, url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/src/app-layer-imap.c#L64-L115}]
+  - name: enc.tls.protocol.imap
+    match: [{field: flow.tls.alpn, op: equals_any, values: [imap]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: app.youtube.video
     match: [{field: flow.tls.sni, op: domain_suffix_any, values: [googlevideo.com]}]
   - name: app.youtube

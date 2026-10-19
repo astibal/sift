@@ -220,6 +220,7 @@ Flat dotted names are the wire format. Initial canonical fields are:
 
 ```text
 flow.tls.sni
+flow.tls.alpn
 flow.http1
 flow.http1.method | host      | path | scheme | url
 flow.http2
@@ -228,7 +229,11 @@ flow.http3
 flow.http3.method | authority | path | scheme | url
 ```
 
-`flow.tls.sni` means the requestor observed the value during TLS processing.
+`flow.tls.sni` and `flow.tls.alpn` mean the requestor observed the values during
+TLS processing. ALPN is the negotiated application protocol, not a port-based
+guess. The registered `imap` ALPN may therefore support
+`enc.tls.protocol.imap`; SMTP has no registered ALPN identifier and must not be
+inferred this way.
 `flow.http1`, `flow.http2`, and `flow.http3` set to `true` mean the requestor's
 application inspection engine positively identified that protocol; they must
 not be inferred merely from a port number or ALPN. `host` and `authority` mean

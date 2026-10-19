@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 ALLOWED_OPERATIONS = {
-    "prefix", "prefix_any", "hex_at", "tls_handshake",
+    "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
     "line_prefix_within", "domain_suffix_any", "equals_any",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
@@ -37,8 +37,16 @@ def main() -> None:
                 raise SystemExit(f"signature {rule['name']} has an unsupported side")
             if "field" in clause and not isinstance(clause["field"], str):
                 raise SystemExit(f"signature {rule['name']} has an invalid field name")
-            if "value" not in clause and "values" not in clause and clause["op"] != "tls_handshake":
+            if ("value" not in clause and "values" not in clause and
+                    clause["op"] not in {"tls_handshake", "decimal_prefix"}):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
+            if clause["op"] == "decimal_prefix":
+                if not isinstance(clause.get("digits"), int) or clause["digits"] < 1:
+                    raise SystemExit(
+                        f"signature {rule['name']} decimal_prefix has invalid digits")
+                if not isinstance(clause.get("separators"), str) or not clause["separators"]:
+                    raise SystemExit(
+                        f"signature {rule['name']} decimal_prefix has invalid separators")
             if clause["op"] == "hex_at" and not isinstance(clause.get("value"), str):
                 raise SystemExit(f"signature {rule['name']} hex_at value must be a quoted string")
         if rule.get("candidates") is not None and not isinstance(rule["candidates"], list):

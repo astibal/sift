@@ -301,7 +301,7 @@ int main() {
           "Hyperscan scanner metadata missing");
     check(live_stats.at("scanner").at("mode") == "stream",
           "Hyperscan stream mode missing");
-    check(live_stats.at("scanner").at("patterns") == 23,
+    check(live_stats.at("scanner").at("patterns") == 26,
           "Hyperscan pattern count is wrong");
     check(live_stats.at("scanner").at("scans") == 2,
           "Hyperscan scan count is wrong");
@@ -309,7 +309,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 24,
+    check(live_stats.at("signatures").at("loaded") == 27,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");
@@ -355,6 +355,32 @@ int main() {
                     "protocol.ajp13.ping"), "AJP ping did not match");
     check(has_match(runtime.inspect("memcache", 'L', "get key\r\n"),
                     "protocol.memcached.ascii"), "memcached ASCII did not match");
+    check(runtime.inspect("smtp", 'L', "eh").matches.empty(),
+          "fragmented SMTP greeting matched too early");
+    check(runtime.inspect("smtp", 'R', "250-mail.example ESMTP\r\n").matches.empty(),
+          "one-sided SMTP banner matched without a client greeting");
+    check(has_match(runtime.inspect("smtp", 'L', "lo client.example\r\n"),
+                    "protocol.smtp"), "fragmented SMTP dialog did not match");
+    check(runtime.inspect("not-smtp", 'R', "220 service ready\r\n").matches.empty(),
+          "SMTP server banner matched alone");
+    check(!has_match(runtime.inspect("not-smtp", 'L', "GET / HTTP/1.1\r\n"),
+                     "protocol.smtp"), "unrelated client traffic completed SMTP match");
+    check(runtime.inspect("invalid-smtp-code", 'R', "22 ready\r\n").matches.empty(),
+          "short SMTP response code matched");
+    check(!has_match(runtime.inspect("invalid-smtp-code", 'L', "EHLO client.example\r\n"),
+                     "protocol.smtp"), "invalid SMTP response completed a match");
+    check(runtime.inspect("imap", 'R', "* o").matches.empty(),
+          "fragmented IMAP banner matched too early");
+    check(has_match(runtime.inspect("imap", 'R', "k IMAP4rev1 ready\r\n"),
+                    "protocol.imap"), "fragmented IMAP banner did not match");
+    check(!has_match(runtime.inspect("not-imap", 'R', "* OKAY maybe\r\n"),
+                     "protocol.imap"), "invalid IMAP banner produced a match");
+    sift::InspectionMetadata imaps_metadata{{{"flow.tls.alpn", {"imap"}}}};
+    check(has_match(runtime.inspect("imaps", 'L', "encrypted", imaps_metadata),
+                    "enc.tls.protocol.imap"), "IMAP TLS ALPN did not match");
+    sift::InspectionMetadata smtp_tls_metadata{{{"flow.tls.alpn", {"smtp"}}}};
+    check(!has_match(runtime.inspect("smtps", 'L', "encrypted", smtp_tls_metadata),
+                     "enc.tls.protocol.imap"), "unregistered SMTP ALPN matched IMAP");
     sift::InspectionMetadata youtube_video_metadata{{
         {"flow.tls.sni", {"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}}}};
     check(has_match(runtime.inspect("youtube-video", 'L', "payload", youtube_video_metadata),
