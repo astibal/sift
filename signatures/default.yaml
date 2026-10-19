@@ -74,6 +74,13 @@ signatures:
   - name: enc.tls.protocol.imap
     match: [{field: flow.tls.alpn, op: equals_any, values: [imap]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
+  - name: protocol.pop3
+    match: [{side: L, op: prefix_any_ci, values: ["USER ", "APOP ", "CAPA\r", "AUTH ", "STLS\r"]}, {side: R, op: prefix_any_ci, values: ["+OK ", "+OK\r"]}]
+    candidates: [{side: L, regex: '^([Uu][Ss][Ee][Rr] |[Aa][Pp][Oo][Pp] |[Cc][Aa][Pp][Aa]\x0d|[Aa][Uu][Tt][Hh] |[Ss][Tt][Ll][Ss]\x0d)'}, {side: R, regex: '^\+[Oo][Kk]( |\x0d)'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/pop3/dpd.sig}]
+  - name: enc.tls.protocol.pop3
+    match: [{field: flow.tls.alpn, op: equals_any, values: [pop3]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: app.youtube.video
     match: [{field: flow.tls.sni, op: domain_suffix_any, values: [googlevideo.com]}]
   - name: app.youtube

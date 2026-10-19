@@ -301,7 +301,7 @@ int main() {
           "Hyperscan scanner metadata missing");
     check(live_stats.at("scanner").at("mode") == "stream",
           "Hyperscan stream mode missing");
-    check(live_stats.at("scanner").at("patterns") == 26,
+    check(live_stats.at("scanner").at("patterns") == 28,
           "Hyperscan pattern count is wrong");
     check(live_stats.at("scanner").at("scans") == 2,
           "Hyperscan scan count is wrong");
@@ -309,7 +309,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 27,
+    check(live_stats.at("signatures").at("loaded") == 29,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");
@@ -381,6 +381,19 @@ int main() {
     sift::InspectionMetadata smtp_tls_metadata{{{"flow.tls.alpn", {"smtp"}}}};
     check(!has_match(runtime.inspect("smtps", 'L', "encrypted", smtp_tls_metadata),
                      "enc.tls.protocol.imap"), "unregistered SMTP ALPN matched IMAP");
+    check(runtime.inspect("pop3", 'R', "+o").matches.empty(),
+          "fragmented POP3 banner matched too early");
+    check(runtime.inspect("pop3", 'L', "user alice\r\n").matches.empty(),
+          "one-sided POP3 client command matched without a banner");
+    check(has_match(runtime.inspect("pop3", 'R', "k maildrop ready\r\n"),
+                    "protocol.pop3"), "fragmented POP3 dialog did not match");
+    check(runtime.inspect("not-pop3", 'R', "-ERR unavailable\r\n").matches.empty(),
+          "negative POP3 response matched as a positive banner");
+    check(!has_match(runtime.inspect("not-pop3", 'L', "USER alice\r\n"),
+                     "protocol.pop3"), "POP3 client command matched without +OK");
+    sift::InspectionMetadata pop3s_metadata{{{"flow.tls.alpn", {"pop3"}}}};
+    check(has_match(runtime.inspect("pop3s", 'L', "encrypted", pop3s_metadata),
+                    "enc.tls.protocol.pop3"), "POP3 TLS ALPN did not match");
     sift::InspectionMetadata youtube_video_metadata{{
         {"flow.tls.sni", {"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}}}};
     check(has_match(runtime.inspect("youtube-video", 'L', "payload", youtube_video_metadata),
