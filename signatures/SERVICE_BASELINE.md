@@ -11,13 +11,13 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | HTTP/1, HTTP/2, HTTP/3 | covered | Plain/requestor metadata plus TLS or QUIC ALPN |
 | TLS | covered | ClientHello and ServerHello structure |
 | SSH | covered | Duplex banners |
-| FTP control | covered | Duplex greeting and `USER` command |
+| FTP control | covered | Duplex greeting/`USER` plus TLS ALPN |
 | SMTP, IMAP, POP3 | covered | Plain dialogues; IMAP and POP3 also have TLS ALPN |
-| DNS | covered | TCP/UDP framing, header constraints and question labels |
-| SMB | covered | SMB1, SMB2 and encrypted SMB3 transport headers |
+| DNS | covered | TCP/UDP framing plus DNS-over-TLS ALPN |
+| SMB | covered | SMB1/2, encrypted SMB3 headers, and SMB TLS ALPN |
 | LDAP | covered | Exact BER frame with message ID and application operation |
 | Kerberos | covered | UDP BER application frames and TCP length framing |
-| PostgreSQL | covered | SSLRequest, startup v3, and framed authentication |
+| PostgreSQL | covered | SSLRequest, startup v3, authentication, and direct-TLS ALPN |
 | MySQL | covered | Framed protocol-v10 server greeting and client handshake |
 | Redis | covered | RESP command/response dialogue |
 | BGP | covered | Marker, exact message length and message type |

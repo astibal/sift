@@ -23,6 +23,9 @@ signatures:
     match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_from_uint_at, offset: 0, width: 2, endian: be, adjustment: 2}, {side: E, op: uint_at, offset: 4, width: 2, endian: be, mask: 112, masked_value: 0}, {side: E, op: uint_at, offset: 6, width: 2, endian: be, min: 1, max: 16}, {side: E, op: label_sequence_at, offset: 14, max_label: 63, trailing_min: 4}]
     candidates: [{side: E, regex: '^......\x00[\x01-\x10]'}]
     sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc1035.html#section-4.2.2}]
+  - name: enc.tls.protocol.dns.tcp
+    match: [{field: flow.tls.alpn, op: equals_any, values: [dot]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: enc.tls.protocol.http1
     match: [{field: flow.tls.alpn, op: equals_any, values: ["http/1.0", "http/1.1"]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
@@ -45,6 +48,13 @@ signatures:
     match: [{side: L, op: prefix_any_ci, values: ["USER "]}, {side: R, op: prefix_any, values: ["120 ", "120-", "220 ", "220-"]}]
     candidates: [{side: L, regex: '^[Uu][Ss][Ee][Rr] '}, {side: R, regex: '^(120|220)[ -]'}]
     sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig}]
+  - name: protocol.ftp
+    match: [{side: L, op: prefix_any_ci, values: ["USER "]}, {side: R, op: prefix_any, values: ["120 ", "120-", "220 ", "220-"]}]
+    candidates: [{side: L, regex: '^[Uu][Ss][Ee][Rr] '}, {side: R, regex: '^(120|220)[ -]'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig}]
+  - name: enc.tls.protocol.ftp
+    match: [{field: flow.tls.alpn, op: equals_any, values: [ftp]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: protocol.socks4.connect
     match: [{side: L, op: hex_at, offset: 0, value: "0401"}, {side: R, op: hex_at, offset: 0, value: "005A"}]
     candidates: [{side: L, regex: '^\x04\x01'}, {side: R, regex: '^\x00\x5a'}]
@@ -62,6 +72,12 @@ signatures:
   - name: protocol.smb3.encrypted
     match: [{side: E, op: hex_at, offset: 4, value: fd534d42}]
     candidates: [{side: E, regex: '^....\xfdSMB'}]
+  - name: protocol.smb
+    match: [{side: E, op: candidate_seen}]
+    candidates: [{side: E, regex: '^....[\xfd\xfe]SMB'}]
+  - name: enc.tls.protocol.smb
+    match: [{field: flow.tls.alpn, op: equals_any, values: [smb]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: protocol.postgresql.sslrequest
     match: [{side: L, op: hex_at, offset: 0, value: 0000000804d2162f}, {side: R, op: prefix_any, values: [S, N]}]
     candidates: [{side: L, regex: '^\x00\x00\x00\x08\x04\xd2\x16\x2f'}, {side: R, regex: '^[SN]'}]
@@ -69,6 +85,13 @@ signatures:
     match: [{side: L, op: size_between, min: 9, max: 10000}, {side: L, op: size_from_uint_at, offset: 0, width: 4, endian: be}, {side: L, op: hex_at, offset: 4, value: "00030000"}]
     candidates: [{side: L, regex: '^....\x00\x03\x00\x00'}]
     sources: [{project: postgresql, url: https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-STARTUPMESSAGE}]
+  - name: protocol.postgresql
+    match: [{side: L, op: size_between, min: 9, max: 10000}, {side: L, op: size_from_uint_at, offset: 0, width: 4, endian: be}, {side: L, op: hex_at, offset: 4, value: "00030000"}]
+    candidates: [{side: L, regex: '^....\x00\x03\x00\x00'}]
+    sources: [{project: postgresql, url: https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-STARTUPMESSAGE}]
+  - name: enc.tls.protocol.postgresql
+    match: [{field: flow.tls.alpn, op: equals_any, values: [postgresql]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: protocol.postgresql.authentication
     match: [{side: R, op: size_between, min: 9, max: 1024}, {side: R, op: size_from_uint_at, offset: 1, width: 4, endian: be, adjustment: 1}, {side: R, op: uint_at, offset: 5, width: 4, endian: be, min: 0, max: 12}]
     candidates: [{side: R, regex: '^R....\x00\x00\x00[\x00-\x0c]'}]
@@ -119,6 +142,12 @@ signatures:
   - name: protocol.sip.dialog
     match: [{side: L, op: prefix_any, values: ["REGISTER ", "INVITE ", "BYE ", "OPTIONS "]}, {side: R, op: prefix, value: "SIP/2.0"}]
     candidates: [{side: L, regex: '^(REGISTER|INVITE|BYE|OPTIONS) '}, {side: R, regex: '^SIP/2\.0'}]
+  - name: protocol.sip
+    match: [{side: L, op: prefix_any, values: ["REGISTER ", "INVITE ", "BYE ", "OPTIONS "]}, {side: R, op: prefix, value: "SIP/2.0"}]
+    candidates: [{side: L, regex: '^(REGISTER|INVITE|BYE|OPTIONS) '}, {side: R, regex: '^SIP/2\.0'}]
+  - name: enc.tls.protocol.sip
+    match: [{field: flow.tls.alpn, op: equals_any, values: ["sip/2"]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: protocol.bittorrent.handshake
     match: [{side: E, op: hex_at, offset: 0, value: 13426974546f7272656e742070726f746f636f6c}]
     candidates: [{side: E, regex: '^\x13BitTorrent protocol'}]
