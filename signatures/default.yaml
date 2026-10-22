@@ -15,6 +15,15 @@ signatures:
     match: [{field: flow.http1, op: equals_any, values: ["true"]}]
   - name: protocol.http3
     match: [{field: flow.http3, op: equals_any, values: ["true"]}]
+  - name: enc.tls.protocol.http1
+    match: [{field: flow.tls.alpn, op: equals_any, values: ["http/1.0", "http/1.1"]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
+  - name: enc.tls.protocol.http2
+    match: [{field: flow.tls.alpn, op: equals_any, values: [h2]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
+  - name: enc.quic.protocol.http3
+    match: [{field: flow.quic.alpn, op: equals_any, values: [h3, h3-29]}]
+    sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
   - name: security.tls.client-hello
     match: [{side: L, op: tls_handshake, type: 1}]
     candidates: [{side: L, regex: '^\x16\x03[\x00-\x0f]..\x01'}]
@@ -25,7 +34,7 @@ signatures:
     match: [{side: L, op: line_prefix_within, value: "SSH-", limit: 255}, {side: R, op: line_prefix_within, value: "SSH-", limit: 255}]
     candidates: [{side: E, regex: '(^|\x0a)SSH-[12]\.'}]
   - name: protocol.smb1.netbios
-    match: [{side: E, op: hex_at, offset: 4, value: ff534d42}]
+    match: [{side: E, op: hex_at, offset: 4, value: FF534D42}]
     candidates: [{side: E, regex: '^....\xffSMB'}]
   - name: protocol.smb2.netbios
     match: [{side: E, op: hex_at, offset: 4, value: fe534d42}]
@@ -81,7 +90,11 @@ signatures:
   - name: enc.tls.protocol.pop3
     match: [{field: flow.tls.alpn, op: equals_any, values: [pop3]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
-  - name: app.youtube.video
+  - name: enc.tls.app.youtube.video
     match: [{field: flow.tls.sni, op: domain_suffix_any, values: [googlevideo.com]}]
-  - name: app.youtube
+  - name: enc.tls.app.youtube
     match: [{field: flow.tls.sni, op: domain_suffix_any, values: [youtube.com, youtube-nocookie.com, youtu.be, ytimg.com, youtubei.googleapis.com]}]
+  - name: app.youtube.video
+    match: [{fields: [flow.http1.host, flow.http2.authority, flow.http3.authority], op: domain_suffix_any, values: [googlevideo.com]}]
+  - name: app.youtube
+    match: [{fields: [flow.http1.host, flow.http2.authority, flow.http3.authority], op: domain_suffix_any, values: [youtube.com, youtube-nocookie.com, youtu.be, ytimg.com, youtubei.googleapis.com]}]

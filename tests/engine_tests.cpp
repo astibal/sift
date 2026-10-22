@@ -1,4 +1,5 @@
 #include <sift/engine.hpp>
+#include <sift/lored.hpp>
 #include <sift/structure.hpp>
 #include <sift/sxbn.hpp>
 
@@ -128,6 +129,20 @@ int main() {
           "negative runtime configuration was accepted");
     check(!bounded_runtime.configure({{"max_flows", 0}}, config_error),
           "out-of-range runtime configuration was accepted");
+    check(!bounded_runtime.configure({{"min_idle_ttl_seconds", "slow"}}, config_error),
+          "non-numeric minimum idle TTL was accepted");
+    check(!bounded_runtime.configure({{"max_idle_ttl_seconds", 700000}}, config_error),
+          "out-of-range maximum idle TTL was accepted");
+    check(!bounded_runtime.configure({{"tombstone_ttl_seconds", 0}}, config_error),
+          "out-of-range tombstone TTL was accepted");
+    check(!bounded_runtime.configure({{"sweep_interval_seconds", 0}}, config_error),
+          "out-of-range sweep interval was accepted");
+    check(!bounded_runtime.configure({{"max_field_names_per_flow", 0}}, config_error),
+          "out-of-range metadata field limit was accepted");
+    check(!bounded_runtime.configure({{"max_values_per_field", 0}}, config_error),
+          "out-of-range metadata value limit was accepted");
+    check(!bounded_runtime.configure({{"max_structure_probes_per_flow", 0}}, config_error),
+          "out-of-range structure probe limit was accepted");
     check(!bounded_runtime.configure(
               {{"min_idle_ttl_seconds", 20}, {"max_idle_ttl_seconds", 10}},
               config_error),
@@ -189,6 +204,26 @@ int main() {
           "late tombstoned payload was not counted");
     check(lifecycle_status.at("flows").at("tombstones") == 1,
           "connection-stop tombstone is missing");
+
+    sift::RuntimeConfig tombstone_config;
+    tombstone_config.max_flows = 1;
+    sift::Runtime tombstone_runtime(tombstone_config);
+    tombstone_runtime.close("old-1");
+    tombstone_runtime.close("old-2");
+    tombstone_runtime.close("old-3");
+    check(tombstone_runtime.status().at("flows").at("tombstones") == 2,
+          "tombstone hard cap was not enforced");
+
+    sift::Runtime probe_limit_runtime;
+    sift::InspectionMetadata first_layer;
+    first_layer.payload_layer = "layer-one";
+    sift::InspectionMetadata second_layer;
+    second_layer.payload_layer = "layer-two";
+    (void)probe_limit_runtime.inspect("probe-limit", 'L', "short", first_layer);
+    (void)probe_limit_runtime.inspect("probe-limit", 'L', "short", second_layer);
+    check(probe_limit_runtime.configure({{"max_structure_probes_per_flow", 1}},
+                                        config_error),
+          "structure probe limit update failed");
 
     sift::Runtime ranged_runtime;
     sift::InspectionMetadata empty_l7;
@@ -309,7 +344,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 29,
+    check(live_stats.at("signatures").at("loaded") == 34,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");
@@ -342,6 +377,59 @@ int main() {
     check(sift::sxbn::decode(wire, event, payload, error), "SXBN decode failed");
     check(payload.size() == 8, "SXBN payload lost");
     check(runtime.inspect("x", 'L', payload).matches.size() == 1, "AMQP did not match");
+
+    const auto rejects_sxbn = [&](std::string malformed, const std::string_view expected_error) {
+        nlohmann::json malformed_event;
+        std::string malformed_payload;
+        std::string malformed_error;
+        check(!sift::sxbn::decode(
+                  malformed, malformed_event, malformed_payload, malformed_error),
+              "malformed SXBN envelope was accepted");
+        check(malformed_error == expected_error, "unexpected SXBN decode error");
+    };
+    rejects_sxbn("not-sxbn", "missing SXBN001 envelope");
+    auto malformed = std::string("SXBN001:00000000:00000000");
+    malformed[16] = '!';
+    rejects_sxbn(malformed, "invalid SXBN length separator");
+    malformed = "SXBN001:Z0000000:00000000";
+    rejects_sxbn(malformed, "invalid SXBN JSON length");
+    malformed = "SXBN001:00000000:Z0000000";
+    rejects_sxbn(malformed, "invalid SXBN payload length");
+    rejects_sxbn("SXBN001:00000000:00000000x", "SXBN envelope length mismatch");
+    rejects_sxbn("SXBN001:00000001:00000000{", "invalid SXBN JSON metadata");
+    rejects_sxbn("SXBN001:00000002:00000000[]", "SXBN metadata must be a JSON object");
+
+    sift::LoredClient disabled_lore({});
+    bool lore_attempted{};
+    bool lore_succeeded{};
+    const sift::FlowKey lore_key{{"test", "unit", false}, "disabled"};
+    check(!disabled_lore.enabled() && !disabled_lore.required(),
+          "empty LoreD configuration was not disabled");
+    check(disabled_lore.enrich(lore_key, {}, {}, lore_attempted, lore_succeeded)
+              .at("status") == "disabled",
+          "disabled LoreD client returned a wrong status");
+    check(disabled_lore.status().at("requests") == 0,
+          "disabled LoreD client reports requests");
+    disabled_lore.close(lore_key);
+    check(sift::lored_mode_name(sift::LoredMode::optional) == "optional" &&
+              sift::lored_mode_name(sift::LoredMode::required) == "required",
+          "LoreD mode names are wrong");
+
+    sift::LoredConfig optional_config;
+    optional_config.url = "http://127.0.0.1:1/v1/query";
+    optional_config.mode = sift::LoredMode::optional;
+    sift::LoredClient optional_lore(optional_config);
+    check(optional_lore.enrich(lore_key, {}, {}, lore_attempted, lore_succeeded)
+              .at("status") == "not-applicable",
+          "LoreD queried without a useful destination hint");
+    check(optional_lore.status().at("skipped") == 1,
+          "LoreD skipped query was not counted");
+
+    const auto serialized = sift::verdict_json(runtime.inspect(
+        "verdict-json", 'L', "GET / HTTP/1.1\r\n"));
+    check(serialized.at("engine") == "siftd" &&
+              serialized.at("matches").front().at("payload_layer") == "tcp",
+          "verdict JSON lost engine or payload-layer metadata");
 
     check(has_match(runtime.inspect("http1", 'L', "GET / HTTP/1.1\r\n"),
                     "protocol.http1.request"), "HTTP/1 request did not match");
@@ -397,13 +485,18 @@ int main() {
     sift::InspectionMetadata youtube_video_metadata{{
         {"flow.tls.sni", {"R4---SN-8xgp1vo-2iae.GOOGLEVIDEO.com."}}}};
     check(has_match(runtime.inspect("youtube-video", 'L', "payload", youtube_video_metadata),
-                    "app.youtube.video"), "YouTube video hostname did not match");
+                    "enc.tls.app.youtube.video"), "YouTube video TLS SNI did not match");
     check(runtime.inspect("youtube-video", 'R', "more", youtube_video_metadata).matches.empty(),
           "YouTube video application matched more than once per flow");
     sift::InspectionMetadata unrelated_metadata{{
         {"flow.tls.sni", {"notgooglevideo.com"}}}};
     check(!has_match(runtime.inspect("unrelated", 'L', "payload", unrelated_metadata),
-                     "app.youtube.video"), "YouTube suffix matched without a domain boundary");
+                     "enc.tls.app.youtube.video"),
+          "YouTube TLS suffix matched without a domain boundary");
+    sift::InspectionMetadata youtube_http_metadata{{
+        {"flow.http2.authority", {"www.youtube.com"}}}};
+    check(has_match(runtime.inspect("youtube-http", 'L', "payload", youtube_http_metadata),
+                    "app.youtube"), "YouTube HTTP authority did not match");
     sift::InspectionMetadata http2_metadata{{{"flow.http2", {"true"}}}};
     check(has_match(runtime.inspect("requestor-h2", 'L', "payload", http2_metadata),
                     "protocol.http2"), "requestor HTTP/2 confirmation did not match");

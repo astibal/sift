@@ -119,8 +119,12 @@ def main():
             "identity": {"tenant": "test", "instance": "integration"},
             "details": {"info": {
                 "side": "L",
+                "flow.destination.address": "203.0.113.10",
+                "flow.destination.port": "443",
+                "flow.transport": "tcp",
                 "flow.tls.sni": "Example.COM.",
                 "flow.http2": True,
+                "flow.http2.authority": "www.example.com",
             }},
         }
         status, enriched = request(port, "POST", "/webhook", json.dumps(content))
@@ -132,6 +136,11 @@ def main():
               "SNI was not forwarded to Lored")
         check(lore_requests[-1]["protocol"] == "http2",
               "protocol hint was not forwarded to Lored")
+        check(lore_requests[-1]["ip"] == "203.0.113.10" and
+              lore_requests[-1]["port"] == 443 and
+              lore_requests[-1]["transport"] == "tcp" and
+              lore_requests[-1]["host"] == "www.example.com",
+              "destination hints were not forwarded to Lored")
 
         check(request(port, "POST", "/webhook", json.dumps(content))[0] == 200,
               "cached LoreD verdict failed")

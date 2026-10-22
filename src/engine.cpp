@@ -122,7 +122,7 @@ void Runtime::load_signature_pack() {
         Rule rule{source.at("name").get<std::string>(), source.at("match"),
                   source.contains("candidates") && !source.at("candidates").empty()};
         for(const auto& clause : rule.clauses) {
-            if(clause.contains("field")) continue;
+            if(clause.contains("field") || clause.contains("fields")) continue;
 
             const auto op = clause.at("op").get<std::string>();
             std::size_t needed{};
@@ -236,26 +236,43 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
     return std::all_of(rule.clauses.begin(), rule.clauses.end(),
                        [&](const nlohmann::json& clause) {
         const auto op = clause.at("op").get<std::string>();
-        if (auto field_name = clause.find("field"); field_name != clause.end()) {
-            const auto found = flow.fields.find(field_name->get<std::string>());
-            if (found == flow.fields.end()) return false;
-            const auto expected = values(clause);
-            if (op == "equals_any") {
-                return std::any_of(found->second.begin(), found->second.end(),
-                                   [&expected](const auto& observed) {
-                    return std::find(expected.begin(), expected.end(), observed) != expected.end();
-                });
+        if(clause.contains("field") || clause.contains("fields")) {
+            // `fields` represents aliases for the same observation across
+            // protocol versions (for example HTTP Host and :authority). A
+            // match in any alias satisfies this single clause.
+            std::vector<std::string> field_names;
+            if(clause.contains("fields")) {
+                field_names = clause.at("fields").get<std::vector<std::string>>();
+            } else {
+                field_names.push_back(clause.at("field").get<std::string>());
             }
-            if (op != "domain_suffix_any")
+
+            const auto expected = values(clause);
+            if(op != "equals_any" && op != "domain_suffix_any") {
                 throw std::runtime_error("unsupported field signature operation: " + op);
-            const auto& domains = expected;
-            return std::any_of(found->second.begin(), found->second.end(),
-                               [&domains](const auto& hostname) {
-                return std::any_of(domains.begin(), domains.end(),
-                                   [&hostname](const auto& domain) {
-                                       return domain_is(normalized_hostname(hostname),
-                                                        normalized_hostname(domain));
-                                   });
+            }
+
+            return std::any_of(field_names.begin(), field_names.end(),
+                               [&](const auto& field_name) {
+                const auto found = flow.fields.find(field_name);
+                if(found == flow.fields.end()) return false;
+
+                if(op == "equals_any") {
+                    return std::any_of(found->second.begin(), found->second.end(),
+                                       [&expected](const auto& observed) {
+                        return std::find(expected.begin(), expected.end(), observed) !=
+                               expected.end();
+                    });
+                }
+
+                return std::any_of(found->second.begin(), found->second.end(),
+                                   [&expected](const auto& hostname) {
+                    return std::any_of(expected.begin(), expected.end(),
+                                       [&hostname](const auto& domain) {
+                        return domain_is(normalized_hostname(hostname),
+                                         normalized_hostname(domain));
+                    });
+                });
             });
         }
         const auto side_text = clause.value("side", "E");

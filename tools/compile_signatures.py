@@ -33,10 +33,20 @@ def main() -> None:
         for clause in rule["match"]:
             if not isinstance(clause, dict) or clause.get("op") not in ALLOWED_OPERATIONS:
                 raise SystemExit(f"signature {rule['name']} has an unsupported match operation")
-            if "field" not in clause and clause.get("side", "E") not in ALLOWED_SIDES:
+            has_field = "field" in clause
+            has_fields = "fields" in clause
+            if has_field and has_fields:
+                raise SystemExit(
+                    f"signature {rule['name']} clause cannot use field and fields together")
+            if not has_field and not has_fields and clause.get("side", "E") not in ALLOWED_SIDES:
                 raise SystemExit(f"signature {rule['name']} has an unsupported side")
-            if "field" in clause and not isinstance(clause["field"], str):
+            if has_field and not isinstance(clause["field"], str):
                 raise SystemExit(f"signature {rule['name']} has an invalid field name")
+            if has_fields and (
+                    not isinstance(clause["fields"], list) or
+                    not clause["fields"] or
+                    not all(isinstance(field, str) and field for field in clause["fields"])):
+                raise SystemExit(f"signature {rule['name']} has invalid field names")
             if ("value" not in clause and "values" not in clause and
                     clause["op"] not in {"tls_handshake", "decimal_prefix"}):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
@@ -56,6 +66,16 @@ def main() -> None:
                 raise SystemExit(f"signature {rule['name']} has an invalid candidate")
             if candidate.get("side", "E") not in {"L", "R", "E"}:
                 raise SystemExit(f"signature {rule['name']} candidate has an unsupported side")
+
+    # An encrypted-evidence verdict must never be the only vocabulary exposed
+    # for an application or protocol. The matching evidence can differ, but
+    # consumers must be able to use the same plain label after inspection.
+    for name in names:
+        for prefix in ("enc.tls.", "enc.quic."):
+            if name.startswith(prefix) and name[len(prefix):] not in names:
+                raise SystemExit(
+                    f"encrypted signature {name} has no plain counterpart "
+                    f"{name[len(prefix):]}")
 
     encoded = json.dumps(document, separators=(",", ":"), ensure_ascii=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
