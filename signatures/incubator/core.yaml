@@ -317,24 +317,6 @@ signatures:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/mqtt/mqtt.rs#L682-L705
 
-  - id: protocol.redis.resp-dialog
-    transport: tcp
-    layer: protocol
-    result: { protocol: redis }
-    confidence: high
-    logic: all
-    enables: redis
-    clauses:
-      - side: left
-        search_max: 4096
-        match: { type: validator, name: redis.resp-request }
-      - side: right
-        search_max: 4096
-        match: { type: validator, name: redis.resp-response }
-    sources:
-      - project: zeek
-        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/redis/dpd.sig
-
   - id: protocol.modbus.tcp
     transport: tcp
     layer: protocol

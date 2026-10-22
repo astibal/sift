@@ -17,8 +17,9 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | SMB | covered | SMB1, SMB2 and encrypted SMB3 transport headers |
 | LDAP | covered | Exact BER frame with message ID and application operation |
 | Kerberos | covered | UDP BER application frames and TCP length framing |
-| PostgreSQL | partial | SSLRequest negotiation only |
-| MySQL | partial | Framed protocol-v10 server greeting |
+| PostgreSQL | covered | SSLRequest, startup v3, and framed authentication |
+| MySQL | covered | Framed protocol-v10 server greeting and client handshake |
+| Redis | covered | RESP command/response dialogue |
 | BGP | covered | Marker, exact message length and message type |
 | SNMP | covered | Exact BER frame with version, community and PDU tags |
 | NTP | covered | Conservative 48-byte v3/v4 base packets and valid modes |
@@ -29,7 +30,7 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 ## Promotion order
 
 ```text
-Fuller PostgreSQL/MySQL -> Redis -> Syslog -> remaining entries
+Syslog -> remaining entries
 ```
 
 Coverage means a production YAML signature plus positive corpus replay. Short

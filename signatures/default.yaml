@@ -65,10 +65,26 @@ signatures:
   - name: protocol.postgresql.sslrequest
     match: [{side: L, op: hex_at, offset: 0, value: 0000000804d2162f}, {side: R, op: prefix_any, values: [S, N]}]
     candidates: [{side: L, regex: '^\x00\x00\x00\x08\x04\xd2\x16\x2f'}, {side: R, regex: '^[SN]'}]
+  - name: protocol.postgresql.startup
+    match: [{side: L, op: size_between, min: 9, max: 10000}, {side: L, op: size_from_uint_at, offset: 0, width: 4, endian: be}, {side: L, op: hex_at, offset: 4, value: "00030000"}]
+    candidates: [{side: L, regex: '^....\x00\x03\x00\x00'}]
+    sources: [{project: postgresql, url: https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-STARTUPMESSAGE}]
+  - name: protocol.postgresql.authentication
+    match: [{side: R, op: size_between, min: 9, max: 1024}, {side: R, op: size_from_uint_at, offset: 1, width: 4, endian: be, adjustment: 1}, {side: R, op: uint_at, offset: 5, width: 4, endian: be, min: 0, max: 12}]
+    candidates: [{side: R, regex: '^R....\x00\x00\x00[\x00-\x0c]'}]
+    sources: [{project: postgresql, url: https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-AUTHENTICATION}]
   - name: protocol.mysql.server-greeting
     match: [{side: R, op: size_between, min: 20, max: 16777219}, {side: R, op: size_from_uint_at, offset: 0, width: 3, endian: le, adjustment: 4}, {side: R, op: hex_at, offset: 3, value: "00"}, {side: R, op: hex_at, offset: 4, value: "0A"}]
     candidates: [{side: R, regex: '^...\x00\x0a[0-9]'}]
     sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c}]
+  - name: protocol.mysql.handshake
+    match: [{side: R, op: size_between, min: 20, max: 16777219}, {side: R, op: size_from_uint_at, offset: 0, width: 3, endian: le, adjustment: 4}, {side: R, op: hex_at, offset: 3, value: "00"}, {side: R, op: hex_at, offset: 4, value: "0A"}, {side: L, op: size_between, min: 37, max: 16777219}, {side: L, op: size_from_uint_at, offset: 0, width: 3, endian: le, adjustment: 4}, {side: L, op: hex_at, offset: 3, value: "01"}, {side: L, op: uint_at, offset: 4, width: 4, endian: le, min: 1}, {side: L, op: hex_at, offset: 13, value: "0000000000000000000000000000000000000000000000"}]
+    candidates: [{side: R, regex: '^...\x00\x0a[0-9]'}, {side: L, regex: '^...\x01'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c}]
+  - name: protocol.redis.resp-dialog
+    match: [{side: L, op: candidate_seen}, {side: R, op: prefix_any, values: ["+PONG\r\n", "+OK\r\n", "-ERR ", "$", "*", ":"]}]
+    candidates: [{side: L, regex: '^\*[1-9][0-9]*\x0d\x0a\$(4\x0d\x0a(PING|AUTH)|3\x0d\x0a(GET|SET)|5\x0d\x0aHELLO)\x0d\x0a'}]
+    sources: [{project: redis, url: https://redis.io/docs/latest/develop/reference/protocol-spec/}]
   - name: protocol.bgp.message
     match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 19, max: 4096}, {side: E, op: hex_at, offset: 0, value: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"}, {side: E, op: size_from_uint_at, offset: 16, width: 2, endian: be}, {side: E, op: uint_at, offset: 18, width: 1, endian: be, min: 1, max: 5}]
     candidates: [{side: E, regex: '^\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'}]

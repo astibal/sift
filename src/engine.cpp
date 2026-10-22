@@ -242,6 +242,8 @@ void Runtime::load_signature_pack() {
                 needed = clause.value("min", 0U);
             } else if(op == "ber_sequence" || op == "ber_frame") {
                 needed = clause.value("offset", 0U) + 2U;
+            } else if(op == "candidate_seen") {
+                needed = 0;
             } else if(op == "decimal_prefix") {
                 needed = clause.at("digits").get<std::size_t>() + 1U;
             } else if(op == "hex_at") {
@@ -379,6 +381,9 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
         }
         if(op == "ber_sequence") return ber_sequence_matches(stream, clause);
         if(op == "ber_frame") return ber_frame_matches(stream, clause);
+        // candidate_seen is valid only on candidate-driven rules. Reaching
+        // rule_matches therefore proves that Hyperscan emitted the rule ID.
+        if(op == "candidate_seen") return true;
         if (op == "line_prefix_within") {
             const auto position = stream.find(candidates.at(0));
             return position != std::string_view::npos && position <= clause.value("limit", 0U) &&
