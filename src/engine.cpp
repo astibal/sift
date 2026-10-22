@@ -7,6 +7,7 @@
 #include <cmath>
 #include <hs/hs.h>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -44,6 +45,39 @@ bool domain_is(const std::string_view hostname, const std::string_view domain) {
 bool at(const std::string_view value, const std::size_t offset,
         const std::string_view bytes) {
     return value.size() >= offset + bytes.size() && value.substr(offset, bytes.size()) == bytes;
+}
+
+std::optional<std::uint32_t> integer_at(
+    const std::string_view stream, const std::size_t offset,
+    const std::size_t width, const bool little_endian) {
+    if(width == 0 || width > 4 || offset > stream.size() ||
+       width > stream.size() - offset) return std::nullopt;
+
+    std::uint32_t value{};
+    for(std::size_t index = 0; index < width; ++index) {
+        const auto source = little_endian ? width - index - 1U : index;
+        value = (value << 8U) |
+            static_cast<unsigned char>(stream[offset + source]);
+    }
+    return value;
+}
+
+bool has_label_sequence(const std::string_view stream, const std::size_t offset,
+                        const std::size_t maximum_label,
+                        const std::size_t trailing_bytes) {
+    if(offset >= stream.size()) return false;
+
+    auto cursor = offset;
+    bool saw_label{};
+    while(cursor < stream.size()) {
+        const auto length = static_cast<unsigned char>(stream[cursor++]);
+        if(length == 0) return saw_label && stream.size() - cursor >= trailing_bytes;
+        if(length > maximum_label || length > stream.size() - cursor) return false;
+
+        saw_label = true;
+        cursor += length;
+    }
+    return false;
 }
 
 bool tls_hello(const std::string_view stream, const unsigned char handshake_type) {
@@ -128,6 +162,12 @@ void Runtime::load_signature_pack() {
             std::size_t needed{};
             if(op == "tls_handshake") {
                 needed = 11;
+            } else if(op == "uint_at" || op == "size_from_uint_at") {
+                needed = clause.value("offset", 0U) + clause.at("width").get<std::size_t>();
+            } else if(op == "label_sequence_at") {
+                needed = clause.at("offset").get<std::size_t>() + 2U;
+            } else if(op == "size_between") {
+                needed = clause.value("min", 0U);
             } else if(op == "decimal_prefix") {
                 needed = clause.at("digits").get<std::size_t>() + 1U;
             } else if(op == "hex_at") {
@@ -224,6 +264,34 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
         }
         if (op == "tls_handshake") {
             return tls_hello(stream, static_cast<unsigned char>(clause.at("type").get<unsigned>()));
+        }
+        if(op == "uint_at" || op == "size_from_uint_at") {
+            const auto width = clause.at("width").get<std::size_t>();
+            const auto offset = clause.value("offset", 0U);
+            const auto integer = integer_at(
+                stream, offset, width, clause.value("endian", "be") == "le");
+            if(!integer.has_value()) return false;
+
+            if(op == "size_from_uint_at") {
+                const auto adjustment = clause.value("adjustment", 0U);
+                return static_cast<std::uint64_t>(*integer) + adjustment == stream.size();
+            }
+
+            if(clause.contains("mask") &&
+               ((*integer & clause.at("mask").get<std::uint32_t>()) !=
+                clause.value("masked_value", 0U))) return false;
+            return *integer >= clause.value("min", 0U) &&
+                   *integer <= clause.value(
+                       "max", std::numeric_limits<std::uint32_t>::max());
+        }
+        if(op == "label_sequence_at") {
+            return has_label_sequence(
+                stream, clause.at("offset").get<std::size_t>(),
+                clause.value("max_label", 63U), clause.value("trailing_min", 0U));
+        }
+        if(op == "size_between") {
+            return stream.size() >= clause.value("min", 0U) &&
+                   stream.size() <= clause.value("max", std::numeric_limits<std::size_t>::max());
         }
         if (op == "line_prefix_within") {
             const auto position = stream.find(candidates.at(0));

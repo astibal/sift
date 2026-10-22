@@ -33,38 +33,6 @@ signatures:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ssl/dpd.sig
 
-  - id: protocol.dns.udp
-    transport: udp
-    layer: protocol
-    result: { protocol: dns }
-    confidence: high
-    logic: all
-    enables: dns
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 12
-        match: { type: validator, name: dns.header-and-sections }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/dns/dns.rs
-
-  - id: protocol.dns.tcp
-    transport: tcp
-    layer: protocol
-    result: { protocol: dns }
-    confidence: high
-    logic: all
-    enables: dns
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 14
-        match: { type: validator, name: dns.tcp-length-header-and-sections }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/dns/dns.rs#L903-L916
-
   - id: protocol.quic.v1-initial
     transport: udp
     layer: protocol

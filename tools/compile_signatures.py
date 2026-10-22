@@ -7,7 +7,8 @@ import yaml
 
 ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
-    "line_prefix_within", "domain_suffix_any", "equals_any",
+    "line_prefix_within", "domain_suffix_any", "equals_any", "uint_at",
+    "size_from_uint_at", "label_sequence_at", "size_between",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
 
@@ -48,7 +49,10 @@ def main() -> None:
                     not all(isinstance(field, str) and field for field in clause["fields"])):
                 raise SystemExit(f"signature {rule['name']} has invalid field names")
             if ("value" not in clause and "values" not in clause and
-                    clause["op"] not in {"tls_handshake", "decimal_prefix"}):
+                    clause["op"] not in {
+                        "tls_handshake", "decimal_prefix", "uint_at",
+                        "size_from_uint_at", "label_sequence_at", "size_between",
+                    }):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
             if clause["op"] == "decimal_prefix":
                 if not isinstance(clause.get("digits"), int) or clause["digits"] < 1:
@@ -59,6 +63,14 @@ def main() -> None:
                         f"signature {rule['name']} decimal_prefix has invalid separators")
             if clause["op"] == "hex_at" and not isinstance(clause.get("value"), str):
                 raise SystemExit(f"signature {rule['name']} hex_at value must be a quoted string")
+            if clause["op"] in {"uint_at", "size_from_uint_at"}:
+                if clause.get("width") not in {1, 2, 3, 4}:
+                    raise SystemExit(f"signature {rule['name']} has an invalid integer width")
+                if clause.get("endian", "be") not in {"be", "le"}:
+                    raise SystemExit(f"signature {rule['name']} has an invalid byte order")
+            if clause["op"] == "label_sequence_at" and not isinstance(
+                    clause.get("offset"), int):
+                raise SystemExit(f"signature {rule['name']} label sequence has no offset")
         if rule.get("candidates") is not None and not isinstance(rule["candidates"], list):
             raise SystemExit(f"signature {rule['name']} candidates must be a list")
         for candidate in rule.get("candidates", []):

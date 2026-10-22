@@ -29,7 +29,6 @@ signatures:
   - { id: protocol.stun.binding-success, transport: udp, layer: protocol, result: { protocol: stun, message: binding_success }, confidence: certain, logic: all, clauses: [{ side: right, offset: 0, match: { type: bytes, value_hex: '01 01' } }, { side: right, offset: 0, min_size: 20, match: { type: validator, name: stun.rfc5389-header } }], sources: *stun }
   - { id: protocol.stun.binding-error, transport: udp, layer: protocol, result: { protocol: stun, message: binding_error }, confidence: certain, logic: all, clauses: [{ side: right, offset: 0, match: { type: bytes, value_hex: '01 11' } }, { side: right, offset: 0, min_size: 20, match: { type: validator, name: stun.rfc5389-header } }], sources: *stun }
 
-  - { id: protocol.mysql.server-greeting, transport: tcp, layer: protocol, result: { protocol: mysql, message: server_greeting }, confidence: high, logic: all, clauses: [{ side: right, offset: 4, match: { type: bytes, value_hex: '0a' } }, { side: right, offset: 0, min_size: 20, match: { type: validator, name: mysql.packet-and-greeting } }], sources: *mysql }
   - { id: protocol.mysql.client-handshake, transport: tcp, layer: protocol, result: { protocol: mysql, message: client_handshake }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, min_size: 36, match: { type: validator, name: mysql.packet-and-client-capabilities } }], sources: *mysql }
 
 

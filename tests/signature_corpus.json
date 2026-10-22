@@ -7,6 +7,8 @@
     {"name":"requestor HTTP/1","expect":"protocol.http1","chunks":[{"fields":{"flow.http1":true}}]},
     {"name":"requestor HTTP/2","expect":"protocol.http2","chunks":[{"fields":{"flow.http2":true}}]},
     {"name":"requestor HTTP/3","expect":"protocol.http3","chunks":[{"fields":{"flow.http3":true}}]},
+    {"name":"DNS UDP question","expect":"protocol.dns.udp","chunks":[{"side":"L","hex":"12340100000100000000000003777777076578616d706c6503636f6d0000010001","fields":{"flow.transport":"udp"}}]},
+    {"name":"DNS TCP question","expect":"protocol.dns.tcp","chunks":[{"side":"L","hex":"002112340100000100000000000003777777076578616d706c6503636f6d0000010001","fields":{"flow.transport":"tcp"}}]},
     {"name":"TLS ALPN HTTP/1.1","expect":"enc.tls.protocol.http1","chunks":[{"fields":{"flow.tls.alpn":"http/1.1"}}]},
     {"name":"TLS ALPN HTTP/2","expect":"enc.tls.protocol.http2","chunks":[{"fields":{"flow.tls.alpn":"h2"}}]},
     {"name":"QUIC ALPN HTTP/3","expect":"enc.quic.protocol.http3","chunks":[{"fields":{"flow.quic.alpn":"h3"}}]},
@@ -20,6 +22,7 @@
     {"name":"SMB2 NetBIOS","expect":"protocol.smb2.netbios","chunks":[{"side":"R","hex":"00000020fe534d42"}]},
     {"name":"SMB3 encrypted","expect":"protocol.smb3.encrypted","chunks":[{"side":"R","hex":"00000020fd534d42"}]},
     {"name":"PostgreSQL SSLRequest accepted","expect":"protocol.postgresql.sslrequest","chunks":[{"side":"L","hex":"0000000804d2162f"},{"side":"R","text":"S"}]},
+    {"name":"MySQL server greeting","expect":"protocol.mysql.server-greeting","chunks":[{"side":"R","hex":"170000000a382e302e33360001000000313233343536373800ffff"}]},
     {"name":"RFB duplex banners","expect":"protocol.rfb.banner-both","chunks":[{"side":"L","text":"RFB 003.008\n"},{"side":"R","text":"RFB 003.008\n"}]},
     {"name":"SIP dialog","expect":"protocol.sip.dialog","chunks":[{"side":"L","text":"INVITE sip:user@example.test SIP/2.0\r\n"},{"side":"R","text":"SIP/2.0 100 Trying\r\n"}]},
     {"name":"BitTorrent handshake","expect":"protocol.bittorrent.handshake","chunks":[{"side":"L","hex":"13426974546f7272656e742070726f746f636f6c"}]},
@@ -47,6 +50,9 @@
     {"name":"IMAP rejects similar token","reject":["protocol.imap"],"chunks":[{"side":"R","text":"* OKAY not IMAP\r\n"}]},
     {"name":"hostname suffix needs label boundary","reject":["enc.tls.app.youtube.video","enc.tls.app.youtube"],"chunks":[{"fields":{"flow.tls.sni":"notgooglevideo.com"}}]},
     {"name":"TLS structural length validation","reject":["security.tls.client-hello"],"chunks":[{"side":"L","hex":"160303000401000010"}]},
+    {"name":"DNS rejects wrong transport","reject":["protocol.dns.udp","protocol.dns.tcp"],"chunks":[{"side":"L","hex":"12340100000100000000000003777777076578616d706c6503636f6d0000010001","fields":{"flow.transport":"tcp"}}]},
+    {"name":"DNS rejects truncated labels","reject":["protocol.dns.udp"],"chunks":[{"side":"L","hex":"12340100000100000000000007777777","fields":{"flow.transport":"udp"}}]},
+    {"name":"MySQL rejects inconsistent packet length","reject":["protocol.mysql.server-greeting"],"chunks":[{"side":"R","hex":"180000000a382e302e33360001000000313233343536373800ffff"}]},
     {"name":"PostgreSQL SSLRequest requires response","reject":["protocol.postgresql.sslrequest"],"chunks":[{"side":"L","hex":"0000000804d2162f"}]}
   ]
 }

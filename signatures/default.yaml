@@ -15,6 +15,14 @@ signatures:
     match: [{field: flow.http1, op: equals_any, values: ["true"]}]
   - name: protocol.http3
     match: [{field: flow.http3, op: equals_any, values: ["true"]}]
+  - name: protocol.dns.udp
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 17, max: 4096}, {side: E, op: uint_at, offset: 2, width: 2, endian: be, mask: 112, masked_value: 0}, {side: E, op: uint_at, offset: 4, width: 2, endian: be, min: 1, max: 16}, {side: E, op: label_sequence_at, offset: 12, max_label: 63, trailing_min: 4}]
+    candidates: [{side: E, regex: '^....\x00[\x01-\x10]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc1035.html#section-4.1}]
+  - name: protocol.dns.tcp
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_from_uint_at, offset: 0, width: 2, endian: be, adjustment: 2}, {side: E, op: uint_at, offset: 4, width: 2, endian: be, mask: 112, masked_value: 0}, {side: E, op: uint_at, offset: 6, width: 2, endian: be, min: 1, max: 16}, {side: E, op: label_sequence_at, offset: 14, max_label: 63, trailing_min: 4}]
+    candidates: [{side: E, regex: '^......\x00[\x01-\x10]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc1035.html#section-4.2.2}]
   - name: enc.tls.protocol.http1
     match: [{field: flow.tls.alpn, op: equals_any, values: ["http/1.0", "http/1.1"]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
@@ -57,6 +65,10 @@ signatures:
   - name: protocol.postgresql.sslrequest
     match: [{side: L, op: hex_at, offset: 0, value: 0000000804d2162f}, {side: R, op: prefix_any, values: [S, N]}]
     candidates: [{side: L, regex: '^\x00\x00\x00\x08\x04\xd2\x16\x2f'}, {side: R, regex: '^[SN]'}]
+  - name: protocol.mysql.server-greeting
+    match: [{side: R, op: size_between, min: 20, max: 16777219}, {side: R, op: size_from_uint_at, offset: 0, width: 3, endian: le, adjustment: 4}, {side: R, op: hex_at, offset: 3, value: "00"}, {side: R, op: hex_at, offset: 4, value: "0A"}]
+    candidates: [{side: R, regex: '^...\x00\x0a[0-9]'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c}]
   - name: protocol.rfb.banner-both
     match: [{side: L, op: prefix, value: "RFB "}, {side: R, op: prefix, value: "RFB "}]
     candidates: [{side: E, regex: '^RFB '}]
