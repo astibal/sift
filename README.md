@@ -81,6 +81,11 @@ form one composite key. Legacy `source` values remain supported, with the
 numeric peer IP used only when the request carries no producer identity. See
 [API.md](API.md) for identity precedence and trust boundaries.
 
+Passive client-scoped DNS answers can be submitted to
+`POST /api/dns-observation`. Sift correlates them with later source/destination
+flow metadata until the supplied TTL expires; see
+[API.md](API.md#passive-dns-evidence).
+
 Runtime counters are available as JSON from `GET /api/stats`. The existing
 timing section reports both runtime `engine_delay_us` (flow management and
 signature search) and content request `total_delay_us` (request decoded through

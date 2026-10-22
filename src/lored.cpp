@@ -132,7 +132,8 @@ nlohmann::json LoredClient::build_query(
     }
 
     if(const auto host = first_value(metadata, {
-            "flow.http3.authority", "flow.http2.authority", "flow.http1.host"})) {
+            "flow.http3.authority", "flow.http2.authority", "flow.http1.host",
+            "flow.dns.forward.hostname"})) {
         query["host"] = *host;
     }
 

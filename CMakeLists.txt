@@ -34,6 +34,7 @@ add_custom_target(sift_signature_pack DEPENDS ${SIFT_COMPILED_SIGNATURES})
 
 add_library(sift_core
     ${SIFT_COMPILED_SIGNATURES}
+    src/dns_evidence.cpp
     src/engine.cpp
     src/identity.cpp
     src/lored.cpp
@@ -99,6 +100,7 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_coverage.py
                 --minimum 93
                 --root ${CMAKE_CURRENT_SOURCE_DIR}
+                --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/dns_evidence.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/engine.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/identity.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/lored.cpp.gcda

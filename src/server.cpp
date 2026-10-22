@@ -1,5 +1,6 @@
 #include <sift/engine_server.hpp>
 
+#include <sift/dns_evidence.hpp>
 #include <sift/engine.hpp>
 #include <sift/identity.hpp>
 #include <sift/lored.hpp>
@@ -73,6 +74,15 @@ bool loopback_peer(const std::string_view address) {
     return address == "127.0.0.1" || address == "::1";
 }
 
+std::string first_metadata_value(
+    const InspectionMetadata& metadata, const std::initializer_list<const char*> names) {
+    for(const auto* name : names) {
+        const auto found = metadata.fields.find(name);
+        if(found != metadata.fields.end() && !found->second.empty()) return found->second.front();
+    }
+    return {};
+}
+
 class Controller final : public lmh::Controller {
 public:
     Controller(const ServerConfig& config, Runtime& runtime)
@@ -84,7 +94,8 @@ public:
         return (m == "GET" &&
                 (p == "/api/health" || p == "/api/status" || p == "/api/stats" ||
                  p == "/api/diagnostics" || p == "/api/config")) ||
-               (m == "POST" && (p == config_.path || p == "/api/config"));
+               (m == "POST" && (p == config_.path || p == "/api/config" ||
+                                 p == "/api/dns-observation"));
     }
 
     lmh::ConnectionState* create_state() override { return new RequestState(*this); }
@@ -115,6 +126,19 @@ public:
             reply = {{"error", "request body too large"}};
         } else if (std::string_view(url) == "/api/diagnostics") {
             reply = diagnostics();
+        } else if(std::string_view(url) == "/api/dns-observation") {
+            const auto observation = nlohmann::json::parse(
+                state.request_data, nullptr, false);
+            std::string error;
+            if(observation.is_discarded() || !observation.is_object()) {
+                status = 400;
+                reply = {{"error", "invalid JSON"}};
+            } else if(!dns_evidence_.observe(
+                          resolve_identity(observation, peer_ip(connection)),
+                          observation, reply, error)) {
+                status = error == "DNS evidence cache capacity reached" ? 503U : 400U;
+                reply = {{"error", error}};
+            }
         } else if(std::string_view(url) == "/api/config") {
             const auto remote_ip = peer_ip(connection);
             if(std::string_view(method) == "GET") {
@@ -169,7 +193,7 @@ private:
             std::chrono::system_clock::now().time_since_epoch()).count());
     }
 
-    nlohmann::json diagnostics() const {
+    nlohmann::json diagnostics() {
         const auto uptime_ms = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - started_).count());
@@ -193,6 +217,7 @@ private:
             }},
             {"engine", runtime_.status()},
             {"lored", lored_.status()},
+            {"dns_evidence", dns_evidence_.status()},
         };
     }
 
@@ -229,7 +254,10 @@ private:
                                   {"fallback", "peer-ip"}}},
                     {"enrichment", {{"lored", {
                         {"mode", lored_mode_name(config_.lored.mode)},
-                        {"enabled", lored_.enabled()}}}}},
+                        {"enabled", lored_.enabled()}}},
+                        {"dns_evidence", {
+                            {"endpoint", "/api/dns-observation"},
+                            {"format", "sift-dns-observation/1"}}}}},
                     {"service", "siftd"}};
         }
 
@@ -347,9 +375,27 @@ private:
                 }
             }
         }
+
+        nlohmann::json dns_evidence = {{"status", "not-applicable"}};
+        const auto source_address = first_metadata_value(metadata, {
+            "flow.source.address", "flow.src.ip", "flow.client.ip"});
+        const auto destination_address = first_metadata_value(metadata, {
+            "flow.destination.address", "flow.dst.ip", "flow.remote.ip"});
+        if(!source_address.empty() && !destination_address.empty()) {
+            dns_evidence = dns_evidence_.lookup(
+                identity, source_address, destination_address);
+            if(dns_evidence.value("status", "") == "matched") {
+                auto& hostnames = metadata.fields["flow.dns.forward.hostname"];
+                for(const auto& observation : dns_evidence.at("observations")) {
+                    hostnames.push_back(observation.at("hostname").get<std::string>());
+                }
+                metadata.fields["flow.dns.forward.match"] = {"true"};
+            }
+        }
         const FlowKey key{identity, std::move(session)};
         const auto verdict = runtime_.inspect(key, side, payload, metadata);
         auto reply = verdict_json(verdict);
+        reply["dns_evidence"] = std::move(dns_evidence);
 
         bool lore_attempted{};
         bool lore_succeeded{};
@@ -377,6 +423,7 @@ private:
     const ServerConfig& config_;
     Runtime& runtime_;
     LoredClient lored_;
+    DnsEvidenceCache dns_evidence_;
     std::atomic_uint64_t anonymous_sequence_{};
     const std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
     std::atomic_uint64_t requests_total_{};

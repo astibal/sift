@@ -112,6 +112,32 @@ def main():
               "lifecycle capability is missing from handshake")
         check(info["enrichment"]["lored"]["mode"] == "optional",
               "Lored capability is missing from handshake")
+        check(info["enrichment"]["dns_evidence"]["endpoint"] ==
+              "/api/dns-observation",
+              "DNS evidence capability is missing from handshake")
+
+        status, rejected_dns = request(
+            port, "POST", "/api/dns-observation", json.dumps({
+                "client_address": "invalid",
+                "hostname": "example.com",
+                "addresses": ["203.0.113.10"],
+                "ttl_seconds": 300,
+            }))
+        check(status == 400 and "client_address" in rejected_dns["error"],
+              "invalid DNS observation was accepted")
+        status, stored_dns = request(
+            port, "POST", "/api/dns-observation", json.dumps({
+                "format": "sift-dns-observation/1",
+                "identity": {"tenant": "test", "instance": "integration"},
+                "client_address": "10.0.0.42",
+                "hostname": "DNS.Example.COM.",
+                "addresses": ["203.0.113.10"],
+                "cname_chain": ["edge.example.net"],
+                "ttl_seconds": 300,
+            }))
+        check(status == 200 and stored_dns["status"] == "stored" and
+              stored_dns["hostname"] == "dns.example.com",
+              "DNS observation endpoint failed")
 
         content = {
             "action": "connection-content",
@@ -119,6 +145,7 @@ def main():
             "identity": {"tenant": "test", "instance": "integration"},
             "details": {"info": {
                 "side": "L",
+                "flow.source.address": "10.0.0.42",
                 "flow.destination.address": "203.0.113.10",
                 "flow.destination.port": "443",
                 "flow.transport": "tcp",
@@ -130,6 +157,10 @@ def main():
         status, enriched = request(port, "POST", "/webhook", json.dumps(content))
         check(status == 200 and enriched["lore"]["status"] == "matched",
               "Lored verdict was not attached")
+        check(enriched["dns_evidence"]["status"] == "matched" and
+              enriched["dns_evidence"]["observations"][0]["hostname"] ==
+                  "dns.example.com",
+              "passive DNS evidence was not attached")
         check(enriched["lore"]["candidates"][0]["value"] == "service.example",
               "wrong Lored candidate")
         check(lore_requests[-1]["sni"] == "Example.COM.",
@@ -215,6 +246,10 @@ def main():
               "resolved LoreD flow suppression was not diagnosed")
         check(diagnostics["lored"]["limit_suppressed"] == 1,
               "LoreD per-flow request limit was not diagnosed")
+        check(diagnostics["dns_evidence"]["observations"] == 1 and
+              diagnostics["dns_evidence"]["hits"] >= 1 and
+              diagnostics["dns_evidence"]["rejected"] == 1,
+              "DNS evidence diagnostics are missing")
     finally:
         process.send_signal(signal.SIGTERM)
         try:

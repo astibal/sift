@@ -19,6 +19,39 @@ Compatibility aliases `flow.dst.ip`, `flow.dst.port`, `flow.remote.ip`, and
 `flow.remote.port` are accepted. Lore candidates and Sift payload signatures
 remain separate evidence domains.
 
+## Passive DNS evidence
+
+`POST /api/dns-observation` records a client-scoped DNS answer for later flow
+correlation. Producer identity follows the same tenant and instance rules as
+payload inspection:
+
+```json
+{
+  "format": "sift-dns-observation/1",
+  "identity": {"tenant": "default", "instance": "helmut-edge-01"},
+  "client_address": "10.0.0.42",
+  "hostname": "www.example.com",
+  "addresses": ["203.0.113.10", "2001:db8::10"],
+  "cname_chain": ["edge.example.net"],
+  "ttl_seconds": 300
+}
+```
+
+The cache key contains tenant, producer instance, client address and returned
+destination address. An observation is never shared across tenants,
+requestors, or clients. TTL starts when Sift accepts it and is capped at 24
+hours. A later `connection-content` carrying `flow.source.address` and
+`flow.destination.address` receives a `dns_evidence` result. On a match Sift
+also adds internal metadata:
+
+```text
+flow.dns.forward.match = true
+flow.dns.forward.hostname = <observed query name>
+```
+
+The hostname becomes a LoreD host hint only when HTTP Host/authority is absent.
+It remains supporting evidence rather than a payload signature verdict.
+
 Relevant observations accumulate for the flow lifetime. An unchanged query is
 served from the flow state, and a successful match suppresses later queries for
 that flow. Unknown results may be refined by later SNI, authority or protocol

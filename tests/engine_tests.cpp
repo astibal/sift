@@ -1,4 +1,5 @@
 #include <sift/engine.hpp>
+#include <sift/dns_evidence.hpp>
 #include <sift/lored.hpp>
 #include <sift/structure.hpp>
 #include <sift/sxbn.hpp>
@@ -61,6 +62,73 @@ std::string sample_tlv() {
 }
 
 int main() {
+    sift::DnsEvidenceCache dns_evidence;
+    const sift::SourceIdentity dns_source{"tenant-a", "edge-a", false};
+    nlohmann::json dns_reply;
+    std::string dns_error;
+    check(!dns_evidence.observe(dns_source, nlohmann::json::array(),
+                                dns_reply, dns_error),
+          "non-object DNS observation was accepted");
+    dns_error.clear();
+    check(!dns_evidence.observe(dns_source,
+              {{"client_address", "invalid"}, {"hostname", "example.com"},
+               {"addresses", {"203.0.113.10"}}, {"ttl_seconds", 60}},
+              dns_reply, dns_error),
+          "invalid DNS client address was accepted");
+    dns_error.clear();
+    check(!dns_evidence.observe(dns_source,
+              {{"client_address", "10.0.0.42"}, {"hostname", "example.com"},
+               {"addresses", nlohmann::json::array()}, {"ttl_seconds", 60}},
+              dns_reply, dns_error),
+          "empty DNS address list was accepted");
+    dns_error.clear();
+    check(!dns_evidence.observe(dns_source,
+              {{"client_address", "10.0.0.42"}, {"hostname", "example.com"},
+               {"addresses", {"invalid"}}, {"ttl_seconds", 60}},
+              dns_reply, dns_error),
+          "invalid DNS answer address was accepted");
+    dns_error.clear();
+    check(!dns_evidence.observe(dns_source,
+              {{"client_address", "10.0.0.42"}, {"hostname", "example.com"},
+               {"addresses", {"203.0.113.10"}},
+               {"cname_chain", "not-an-array"}, {"ttl_seconds", 60}},
+              dns_reply, dns_error),
+          "invalid CNAME chain was accepted");
+    dns_error.clear();
+    check(dns_evidence.observe(dns_source,
+              {{"client_address", "10.0.0.42"}, {"hostname", "WWW.Example.COM."},
+               {"addresses", {"203.0.113.10", "2001:db8::10"}},
+               {"cname_chain", {"Edge.Example.NET."}}, {"ttl_seconds", 60}},
+              dns_reply, dns_error),
+          "valid DNS observation was rejected");
+    check(dns_reply.at("hostname") == "www.example.com" &&
+              dns_reply.at("addresses") == 2,
+          "DNS observation was not normalized");
+    const auto dns_hit = dns_evidence.lookup(
+        dns_source, "10.0.0.42", "203.0.113.10");
+    check(dns_hit.at("status") == "matched" &&
+              dns_hit.at("observations").at(0).at("hostname") == "www.example.com" &&
+              dns_hit.at("observations").at(0).at("cname_chain").at(0) ==
+                  "edge.example.net",
+          "DNS forward evidence lookup failed");
+    dns_error.clear();
+    check(dns_evidence.observe(dns_source,
+              {{"client_address", "10.0.0.42"}, {"hostname", "www.example.com"},
+               {"addresses", {"203.0.113.10"}}, {"ttl_seconds", 120}},
+              dns_reply, dns_error),
+          "DNS observation refresh was rejected");
+    check(dns_evidence.lookup(dns_source, "10.0.0.43", "203.0.113.10")
+              .at("status") == "unknown",
+          "DNS evidence leaked across clients");
+    check(dns_evidence.lookup({"tenant-b", "edge-a", false},
+                              "10.0.0.42", "203.0.113.10").at("status") == "unknown",
+          "DNS evidence leaked across tenants");
+    const auto dns_status = dns_evidence.status();
+    check(dns_status.at("observations") == 2 &&
+              dns_status.at("addresses_stored") == 3 &&
+              dns_status.at("hits") == 1 && dns_status.at("rejected") == 4,
+          "DNS evidence statistics are wrong");
+
     const auto tlv_payload = sample_tlv();
     const auto tlv = sift::structure::infer_tlv_candidates(tlv_payload);
     check(!tlv.empty(), "TLV structure was not inferred");
