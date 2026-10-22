@@ -6,7 +6,9 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def free_port():
@@ -42,9 +44,42 @@ def check(condition, message):
 
 
 def main():
+    lore_requests = []
+
+    class LoreHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            query = json.loads(body)
+            lore_requests.append(query)
+            matched = query.get("sni", "").lower().rstrip(".") == "example.com"
+            reply = json.dumps({
+                "format": "lored-verdict/1",
+                "status": "matched" if matched else "unknown",
+                "candidates": [{
+                    "value": "service.example",
+                    "confidence": 0.85,
+                    "evidence": ["tls_sni"],
+                    "providers": ["test"],
+                }] if matched else [],
+                "truncated": False,
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(reply)))
+            self.end_headers()
+            self.wfile.write(reply)
+
+        def log_message(self, *_args):
+            pass
+
+    lore_port = free_port()
+    lore_server = ThreadingHTTPServer(("127.0.0.1", lore_port), LoreHandler)
+    lore_thread = threading.Thread(target=lore_server.serve_forever, daemon=True)
+    lore_thread.start()
     port = free_port()
     process = subprocess.Popen(
-        [sys.argv[1], "--bind", "127.0.0.1", "--port", str(port)],
+        [sys.argv[1], "--bind", "127.0.0.1", "--port", str(port),
+         "--lored-url", f"http://127.0.0.1:{lore_port}/v1/query"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -75,6 +110,68 @@ def main():
             port, "POST", "/webhook", json.dumps({"action": "info"}))
         check(status == 200 and info["lifecycle"]["late-content-tombstones"],
               "lifecycle capability is missing from handshake")
+        check(info["enrichment"]["lored"]["mode"] == "optional",
+              "Lored capability is missing from handshake")
+
+        content = {
+            "action": "connection-content",
+            "id": "lore-flow",
+            "identity": {"tenant": "test", "instance": "integration"},
+            "details": {"info": {
+                "side": "L",
+                "flow.tls.sni": "Example.COM.",
+                "flow.http2": True,
+            }},
+        }
+        status, enriched = request(port, "POST", "/webhook", json.dumps(content))
+        check(status == 200 and enriched["lore"]["status"] == "matched",
+              "Lored verdict was not attached")
+        check(enriched["lore"]["candidates"][0]["value"] == "service.example",
+              "wrong Lored candidate")
+        check(lore_requests[-1]["sni"] == "Example.COM.",
+              "SNI was not forwarded to Lored")
+        check(lore_requests[-1]["protocol"] == "http2",
+              "protocol hint was not forwarded to Lored")
+
+        check(request(port, "POST", "/webhook", json.dumps(content))[0] == 200,
+              "cached LoreD verdict failed")
+        changed_after_match = json.loads(json.dumps(content))
+        changed_after_match["details"]["info"]["flow.http2.authority"] = \
+            "richer.example.com"
+        check(request(port, "POST", "/webhook",
+                      json.dumps(changed_after_match))[0] == 200,
+              "resolved flow suppression failed")
+        check(len(lore_requests) == 1,
+              "resolved flow sent another LoreD request")
+
+        shared = json.loads(json.dumps(content))
+        shared["id"] = "shared-cache-flow"
+        status, shared_reply = request(port, "POST", "/webhook", json.dumps(shared))
+        check(status == 200 and shared_reply["lore"]["status"] == "matched",
+              "shared LoreD cache did not return the verdict")
+        check(len(lore_requests) == 1,
+              "shared LoreD cache sent a duplicate request")
+
+        limited = json.loads(json.dumps(content))
+        limited["id"] = "limited-flow"
+        for index in range(6):
+            limited["details"]["info"]["flow.tls.sni"] = f"unknown-{index}.example"
+            status, limited_reply = request(
+                port, "POST", "/webhook", json.dumps(limited))
+            check(status == 200 and limited_reply["lore"]["status"] == "unknown",
+                  "unknown LoreD verdict was not retained")
+        check(len(lore_requests) == 6,
+              "per-flow LoreD request limit was not enforced")
+
+        lore_server.shutdown()
+        lore_server.server_close()
+        failing = json.loads(json.dumps(content))
+        failing["id"] = "unavailable-flow"
+        failing["details"]["info"]["flow.tls.sni"] = "unavailable.example"
+        status, unavailable = request(
+            port, "POST", "/webhook", json.dumps(failing))
+        check(status == 200 and unavailable["lore"]["status"] == "unavailable",
+              "optional LoreD failure changed the Sift response status")
 
         identity = {"tenant": "test", "instance": "integration"}
         start = {"action": "connection-start", "id": "flow", "identity": identity}
@@ -97,6 +194,18 @@ def main():
               "lifecycle event was not reflected in stats")
         check(stats["flows"]["tombstones"] == 1,
               "connection-stop did not create a tombstone")
+
+        status, diagnostics = request(port, "GET", "/api/diagnostics")
+        check(status == 200 and diagnostics["lored"]["requests"] == 7,
+              "Lored diagnostics are missing")
+        check(diagnostics["lored"]["failures"] == 1,
+              "Lored failure was not diagnosed")
+        check(diagnostics["lored"]["shared_cache_hits"] == 1,
+              "shared LoreD cache hit was not diagnosed")
+        check(diagnostics["lored"]["resolved_suppressed"] >= 2,
+              "resolved LoreD flow suppression was not diagnosed")
+        check(diagnostics["lored"]["limit_suppressed"] == 1,
+              "LoreD per-flow request limit was not diagnosed")
     finally:
         process.send_signal(signal.SIGTERM)
         try:
@@ -113,6 +222,8 @@ def main():
             stdout, stderr = process.communicate()
             raise RuntimeError(
                 f"siftd exited with {process.returncode}\n{stdout}\n{stderr}")
+        lore_server.shutdown()
+        lore_server.server_close()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 #include <sift/engine.hpp>
 #include <sift/identity.hpp>
+#include <sift/lored.hpp>
 #include <sift/sxbn.hpp>
 
 #include <lmhttpd.hpp>
@@ -75,7 +76,7 @@ bool loopback_peer(const std::string_view address) {
 class Controller final : public lmh::Controller {
 public:
     Controller(const ServerConfig& config, Runtime& runtime)
-        : config_(config), runtime_(runtime) {}
+        : config_(config), runtime_(runtime), lored_(config.lored) {}
 
     bool validPath(const char* path, const char* method) override {
         const std::string_view p(path);
@@ -191,6 +192,7 @@ private:
                 {"decode_errors", decode_errors_.load(std::memory_order_relaxed)},
             }},
             {"engine", runtime_.status()},
+            {"lored", lored_.status()},
         };
     }
 
@@ -225,6 +227,9 @@ private:
                     {"identity", {{"version", 1},
                                   {"flow_key", {"tenant", "instance", "session"}},
                                   {"fallback", "peer-ip"}}},
+                    {"enrichment", {{"lored", {
+                        {"mode", lored_mode_name(config_.lored.mode)},
+                        {"enabled", lored_.enabled()}}}}},
                     {"service", "siftd"}};
         }
 
@@ -242,7 +247,10 @@ private:
             if(!session.empty()) {
                 const FlowKey key{identity, std::move(session)};
                 if(action == "connection-start") runtime_.start(key);
-                else runtime_.close(key);
+                else {
+                    runtime_.close(key);
+                    lored_.close(key);
+                }
             }
 
             return nlohmann::json::object();
@@ -340,9 +348,27 @@ private:
             }
         }
         const FlowKey key{identity, std::move(session)};
-        auto reply = verdict_json(runtime_.inspect(key, side, payload, metadata));
+        const auto verdict = runtime_.inspect(key, side, payload, metadata);
+        auto reply = verdict_json(verdict);
 
-        if(anonymous) runtime_.close(key);
+        bool lore_attempted{};
+        bool lore_succeeded{};
+        try {
+            reply["lore"] = lored_.enrich(
+                key, metadata, verdict, lore_attempted, lore_succeeded);
+        } catch(const std::exception& error) {
+            reply["lore"] = {
+                {"status", "unavailable"},
+                {"error", error.what()},
+            };
+
+            if(lored_.required() && lore_attempted) status = 503;
+        }
+
+        if(anonymous) {
+            runtime_.close(key);
+            lored_.close(key);
+        }
 
         runtime_.record_total_delay(std::chrono::steady_clock::now() - started);
         return reply;
@@ -350,6 +376,7 @@ private:
 
     const ServerConfig& config_;
     Runtime& runtime_;
+    LoredClient lored_;
     std::atomic_uint64_t anonymous_sequence_{};
     const std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
     std::atomic_uint64_t requests_total_{};

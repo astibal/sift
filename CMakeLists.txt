@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HYPERSCAN REQUIRED IMPORTED_TARGET libhs)
 pkg_check_modules(MICROHTTPD REQUIRED IMPORTED_TARGET libmicrohttpd)
+pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
 find_package(nlohmann_json 3.10 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 execute_process(
@@ -33,12 +34,14 @@ add_library(sift_core
     ${SIFT_COMPILED_SIGNATURES}
     src/engine.cpp
     src/identity.cpp
+    src/lored.cpp
     src/structure.cpp
     src/sxbn.cpp
 )
 add_dependencies(sift_core sift_signature_pack)
 target_include_directories(sift_core PUBLIC include PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
-target_link_libraries(sift_core PUBLIC nlohmann_json::nlohmann_json PkgConfig::HYPERSCAN)
+target_link_libraries(sift_core PUBLIC nlohmann_json::nlohmann_json
+    PkgConfig::HYPERSCAN PkgConfig::CURL)
 target_compile_options(sift_core PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
 
 add_executable(siftd

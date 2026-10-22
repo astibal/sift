@@ -14,6 +14,33 @@ database per direction. Each flow owns left and right streaming scanner state;
 Hyperscan emits candidate rule IDs and the stateful matchers perform the final
 multi-direction and structural checks.
 
+## Optional LoreD enrichment
+
+Siftd can enrich its payload verdict through the small `lored-verdict/1` API.
+LoreD remains disabled unless its query URL is configured:
+
+```sh
+build/siftd --lored-url http://127.0.0.1:8091/v1/query
+```
+
+The configured default is `optional`: a failed lookup appears as
+`lore.status: unavailable`, while the Sift verdict remains usable. With
+`--lored-mode required`, an applicable failed lookup returns HTTP 503. Requests
+without an IP, SNI or HTTP host are `not-applicable`, because LoreD has nothing
+meaningful to query. The timeout defaults to 50 ms and is configurable through
+`--lored-timeout-ms`.
+
+LoreD candidates remain nested under `lore`; Sift never presents them as
+payload signature matches. `/api/diagnostics` exposes LoreD requests, outcomes
+and latency.
+
+Sift accumulates relevant flow observations and sends a new query only when
+the normalized destination, SNI, HTTP host/authority or protocol fingerprint
+changes. Each flow can issue at most five actual LoreD requests. A matched
+service stops further queries for that flow. Identical queries across flows use
+a bounded 4096-entry cache with a five-minute TTL. Both limits are intentionally
+conservative defaults for a shared Internet-facing LoreD service.
+
 ```text
 any producer -- JSON metadata + raw bytes --> siftd
 Smithproxy   -- SXBN001 -------------------> siftd
@@ -26,7 +53,7 @@ Debian/Ubuntu dependencies:
 
 ```sh
 sudo apt install cmake g++ pkg-config libhyperscan-dev \
-  libmicrohttpd-dev nlohmann-json3-dev
+  libmicrohttpd-dev libcurl4-openssl-dev nlohmann-json3-dev
 git submodule update --init
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j

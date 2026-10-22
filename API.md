@@ -4,6 +4,29 @@ Sift accepts an SXBN001 envelope containing JSON metadata followed by the raw
 payload bytes. The payload is authoritative content; metadata describes the
 requestor's observation of the surrounding flow.
 
+When LoreD enrichment is configured, the normal verdict contains a `lore`
+member with the `lored-verdict/1` response. Sift builds the deliberately small
+query from `flow.tls.sni`, HTTP host/authority, protocol observations, and these
+optional destination fields:
+
+```text
+flow.destination.address
+flow.destination.port
+flow.transport
+```
+
+Compatibility aliases `flow.dst.ip`, `flow.dst.port`, `flow.remote.ip`, and
+`flow.remote.port` are accepted. Lore candidates and Sift payload signatures
+remain separate evidence domains.
+
+Relevant observations accumulate for the flow lifetime. An unchanged query is
+served from the flow state, and a successful match suppresses later queries for
+that flow. Unknown results may be refined by later SNI, authority or protocol
+evidence, but no flow sends more than five LoreD requests. A bounded shared
+five-minute cache also reuses identical results across flows. `connection-stop`
+removes the per-flow Lore state; the shared cache remains available until TTL
+expiry or capacity eviction.
+
 ## Request
 
 ```json

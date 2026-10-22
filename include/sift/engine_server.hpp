@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include <sift/lored.hpp>
+
 namespace sift {
 
 struct ServerConfig {
@@ -11,6 +13,7 @@ struct ServerConfig {
     std::uint16_t port{18081};
     std::string path{"/webhook"};
     std::size_t max_body_bytes{16U * 1024U * 1024U};
+    LoredConfig lored;
 };
 
 class Runtime;
