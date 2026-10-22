@@ -336,7 +336,7 @@ int main() {
           "Hyperscan scanner metadata missing");
     check(live_stats.at("scanner").at("mode") == "stream",
           "Hyperscan stream mode missing");
-    check(live_stats.at("scanner").at("patterns") == 37,
+    check(live_stats.at("scanner").at("patterns") == 40,
           "Hyperscan pattern count is wrong");
     check(live_stats.at("scanner").at("scans") == 2,
           "Hyperscan scan count is wrong");
@@ -344,7 +344,7 @@ int main() {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 40,
+    check(live_stats.at("signatures").at("loaded") == 43,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");

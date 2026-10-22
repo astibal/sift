@@ -23,6 +23,9 @@
     {"name":"SMB3 encrypted","expect":"protocol.smb3.encrypted","chunks":[{"side":"R","hex":"00000020fd534d42"}]},
     {"name":"PostgreSQL SSLRequest accepted","expect":"protocol.postgresql.sslrequest","chunks":[{"side":"L","hex":"0000000804d2162f"},{"side":"R","text":"S"}]},
     {"name":"MySQL server greeting","expect":"protocol.mysql.server-greeting","chunks":[{"side":"R","hex":"170000000a382e302e33360001000000313233343536373800ffff"}]},
+    {"name":"BGP keepalive","expect":"protocol.bgp.message","chunks":[{"side":"R","hex":"ffffffffffffffffffffffffffffffff001304","fields":{"flow.transport":"tcp"}}]},
+    {"name":"LDAP simple bind","expect":"protocol.ldap.ber-message","chunks":[{"side":"L","hex":"300c020101600702010304008000","fields":{"flow.transport":"tcp"}}]},
+    {"name":"SNMPv2c empty GET","expect":"protocol.snmp.ber-message","chunks":[{"side":"L","hex":"301802010104067075626c6963a00b0201010201000201003000","fields":{"flow.transport":"udp"}}]},
     {"name":"RFB duplex banners","expect":"protocol.rfb.banner-both","chunks":[{"side":"L","text":"RFB 003.008\n"},{"side":"R","text":"RFB 003.008\n"}]},
     {"name":"SIP dialog","expect":"protocol.sip.dialog","chunks":[{"side":"L","text":"INVITE sip:user@example.test SIP/2.0\r\n"},{"side":"R","text":"SIP/2.0 100 Trying\r\n"}]},
     {"name":"BitTorrent handshake","expect":"protocol.bittorrent.handshake","chunks":[{"side":"L","hex":"13426974546f7272656e742070726f746f636f6c"}]},
@@ -53,6 +56,10 @@
     {"name":"DNS rejects wrong transport","reject":["protocol.dns.udp","protocol.dns.tcp"],"chunks":[{"side":"L","hex":"12340100000100000000000003777777076578616d706c6503636f6d0000010001","fields":{"flow.transport":"tcp"}}]},
     {"name":"DNS rejects truncated labels","reject":["protocol.dns.udp"],"chunks":[{"side":"L","hex":"12340100000100000000000007777777","fields":{"flow.transport":"udp"}}]},
     {"name":"MySQL rejects inconsistent packet length","reject":["protocol.mysql.server-greeting"],"chunks":[{"side":"R","hex":"180000000a382e302e33360001000000313233343536373800ffff"}]},
+    {"name":"BGP rejects inconsistent message length","reject":["protocol.bgp.message"],"chunks":[{"side":"R","hex":"ffffffffffffffffffffffffffffffff002004","fields":{"flow.transport":"tcp"}}]},
+    {"name":"LDAP rejects generic BER sequence","reject":["protocol.ldap.ber-message"],"chunks":[{"side":"L","hex":"3006020101040178","fields":{"flow.transport":"tcp"}}]},
+    {"name":"SNMP rejects LDAP application operation","reject":["protocol.snmp.ber-message"],"chunks":[{"side":"L","hex":"300c020101600702010304008000","fields":{"flow.transport":"udp"}}]},
+    {"name":"BER rejects indefinite length","reject":["protocol.ldap.ber-message","protocol.snmp.ber-message"],"chunks":[{"side":"L","hex":"30800201016000000000","fields":{"flow.transport":"tcp"}}]},
     {"name":"PostgreSQL SSLRequest requires response","reject":["protocol.postgresql.sslrequest"],"chunks":[{"side":"L","hex":"0000000804d2162f"}]}
   ]
 }

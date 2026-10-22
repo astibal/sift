@@ -354,28 +354,6 @@ signatures:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/redis/dpd.sig
 
-  - id: protocol.ldap.ber
-    transport: any
-    layer: protocol
-    result: { protocol: ldap }
-    confidence: high
-    logic: all
-    enables: ldap
-    clauses:
-      - side: left
-        offset: 0
-        min_size: 7
-        match: { type: validator, name: ldap.ber-message-and-operation }
-      - side: right
-        offset: 0
-        min_size: 2
-        match: { type: validator, name: ldap.ber-message }
-    sources:
-      - project: zeek
-        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ldap/dpd.sig
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ldap/ldap.rs
-
   - id: protocol.kerberos.as-tgs
     transport: any
     layer: protocol
@@ -409,22 +387,6 @@ signatures:
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ntp/ntp.rs#L246-L264
-
-  - id: protocol.snmp.ber
-    transport: udp
-    layer: protocol
-    result: { protocol: snmp }
-    confidence: high
-    logic: all
-    enables: snmp
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 8
-        match: { type: validator, name: snmp.ber-version-community-pdu }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/snmp/snmp.rs#L379-L397
 
   - id: protocol.modbus.tcp
     transport: tcp

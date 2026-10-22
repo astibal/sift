@@ -15,16 +15,19 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | SMTP, IMAP, POP3 | covered | Plain dialogues; IMAP and POP3 also have TLS ALPN |
 | DNS | covered | TCP/UDP framing, header constraints and question labels |
 | SMB | covered | SMB1, SMB2 and encrypted SMB3 transport headers |
-| LDAP, Kerberos | planned | ASN.1 framing must be validated before promotion |
+| LDAP | covered | Exact BER frame with message ID and application operation |
+| Kerberos | planned | Reuse BER framing with Kerberos application tags |
 | PostgreSQL | partial | SSLRequest negotiation only |
 | MySQL | partial | Framed protocol-v10 server greeting |
-| NTP, SNMP, BGP, Syslog | planned | Promote only with structural or duplex evidence |
+| BGP | covered | Marker, exact message length and message type |
+| SNMP | covered | Exact BER frame with version, community and PDU tags |
+| NTP, Syslog | planned | Promote only with structural or duplex evidence |
 | SOCKS4, SOCKS5 | covered | Common CONNECT/no-auth negotiations |
 
 ## Promotion order
 
 ```text
-LDAP -> BGP -> NTP/SNMP -> fuller PostgreSQL/MySQL -> remaining entries
+Kerberos -> NTP -> fuller PostgreSQL/MySQL -> Syslog -> remaining entries
 ```
 
 Coverage means a production YAML signature plus positive corpus replay. Short

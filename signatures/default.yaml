@@ -69,6 +69,18 @@ signatures:
     match: [{side: R, op: size_between, min: 20, max: 16777219}, {side: R, op: size_from_uint_at, offset: 0, width: 3, endian: le, adjustment: 4}, {side: R, op: hex_at, offset: 3, value: "00"}, {side: R, op: hex_at, offset: 4, value: "0A"}]
     candidates: [{side: R, regex: '^...\x00\x0a[0-9]'}]
     sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c}]
+  - name: protocol.bgp.message
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 19, max: 4096}, {side: E, op: hex_at, offset: 0, value: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"}, {side: E, op: size_from_uint_at, offset: 16, width: 2, endian: be}, {side: E, op: uint_at, offset: 18, width: 1, endian: be, min: 1, max: 5}]
+    candidates: [{side: E, regex: '^\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc4271.html#section-4.1}]
+  - name: protocol.ldap.ber-message
+    match: [{field: flow.transport, op: equals_any, values: [tcp, udp]}, {side: E, op: ber_sequence, tag: 48, children: [{tag: 2}, {tag_min: 96, tag_max: 119}]}]
+    candidates: [{side: E, regex: '^\x30'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc4511.html#section-4.1.1}]
+  - name: protocol.snmp.ber-message
+    match: [{field: flow.transport, op: equals_any, values: [udp, tcp]}, {side: E, op: ber_sequence, tag: 48, children: [{tag: 2}, {tag: 4}, {tag_min: 160, tag_max: 168}]}]
+    candidates: [{side: E, regex: '^\x30'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc3416.html#section-4}]
   - name: protocol.rfb.banner-both
     match: [{side: L, op: prefix, value: "RFB "}, {side: R, op: prefix, value: "RFB "}]
     candidates: [{side: E, regex: '^RFB '}]

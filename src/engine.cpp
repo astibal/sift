@@ -80,6 +80,62 @@ bool has_label_sequence(const std::string_view stream, const std::size_t offset,
     return false;
 }
 
+struct BerElement {
+    std::uint8_t tag{};
+    std::size_t value_offset{};
+    std::size_t end{};
+};
+
+std::optional<BerElement> ber_element_at(
+    const std::string_view stream, const std::size_t offset) {
+    if(offset + 2U > stream.size()) return std::nullopt;
+
+    const auto tag = static_cast<std::uint8_t>(stream[offset]);
+    const auto first_length = static_cast<std::uint8_t>(stream[offset + 1U]);
+    std::size_t cursor = offset + 2U;
+    std::size_t length{};
+
+    if((first_length & 0x80U) == 0) {
+        length = first_length;
+    } else {
+        const auto octets = static_cast<std::size_t>(first_length & 0x7fU);
+        if(octets == 0 || octets > 4 || cursor + octets > stream.size()) {
+            return std::nullopt;
+        }
+        if(static_cast<std::uint8_t>(stream[cursor]) == 0) return std::nullopt;
+
+        for(std::size_t index = 0; index < octets; ++index) {
+            length = (length << 8U) |
+                static_cast<std::uint8_t>(stream[cursor++]);
+        }
+        if(length < 128U) return std::nullopt;
+    }
+
+    if(length > stream.size() - cursor) return std::nullopt;
+    return BerElement{tag, cursor, cursor + length};
+}
+
+bool ber_sequence_matches(const std::string_view stream,
+                          const nlohmann::json& clause) {
+    const auto offset = clause.value("offset", 0U);
+    const auto outer = ber_element_at(stream, offset);
+    if(!outer.has_value() || outer->tag != clause.value("tag", 0x30U)) return false;
+    if(clause.value("exact_frame", true) && outer->end != stream.size()) return false;
+
+    auto cursor = outer->value_offset;
+    for(const auto& expected : clause.at("children")) {
+        const auto child = ber_element_at(stream, cursor);
+        if(!child.has_value() || child->end > outer->end) return false;
+
+        const auto minimum = expected.value("tag_min", expected.value("tag", 0U));
+        const auto maximum = expected.value("tag_max", expected.value("tag", 255U));
+        if(child->tag < minimum || child->tag > maximum) return false;
+        cursor = child->end;
+    }
+
+    return clause.value("allow_extra", false) || cursor == outer->end;
+}
+
 bool tls_hello(const std::string_view stream, const unsigned char handshake_type) {
     if (stream.size() < 11 || static_cast<unsigned char>(stream[0]) != 0x16 ||
         static_cast<unsigned char>(stream[1]) != 0x03 ||
@@ -168,6 +224,8 @@ void Runtime::load_signature_pack() {
                 needed = clause.at("offset").get<std::size_t>() + 2U;
             } else if(op == "size_between") {
                 needed = clause.value("min", 0U);
+            } else if(op == "ber_sequence") {
+                needed = clause.value("offset", 0U) + 2U;
             } else if(op == "decimal_prefix") {
                 needed = clause.at("digits").get<std::size_t>() + 1U;
             } else if(op == "hex_at") {
@@ -293,6 +351,7 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
             return stream.size() >= clause.value("min", 0U) &&
                    stream.size() <= clause.value("max", std::numeric_limits<std::size_t>::max());
         }
+        if(op == "ber_sequence") return ber_sequence_matches(stream, clause);
         if (op == "line_prefix_within") {
             const auto position = stream.find(candidates.at(0));
             return position != std::string_view::npos && position <= clause.value("limit", 0U) &&

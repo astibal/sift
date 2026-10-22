@@ -8,7 +8,7 @@ import yaml
 ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
     "line_prefix_within", "domain_suffix_any", "equals_any", "uint_at",
-    "size_from_uint_at", "label_sequence_at", "size_between",
+    "size_from_uint_at", "label_sequence_at", "size_between", "ber_sequence",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
 
@@ -52,6 +52,7 @@ def main() -> None:
                     clause["op"] not in {
                         "tls_handshake", "decimal_prefix", "uint_at",
                         "size_from_uint_at", "label_sequence_at", "size_between",
+                        "ber_sequence",
                     }):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
             if clause["op"] == "decimal_prefix":
@@ -71,6 +72,14 @@ def main() -> None:
             if clause["op"] == "label_sequence_at" and not isinstance(
                     clause.get("offset"), int):
                 raise SystemExit(f"signature {rule['name']} label sequence has no offset")
+            if clause["op"] == "ber_sequence":
+                if not isinstance(clause.get("children"), list) or not clause["children"]:
+                    raise SystemExit(f"signature {rule['name']} BER sequence has no children")
+                for child in clause["children"]:
+                    if not isinstance(child, dict) or not any(
+                            key in child for key in ("tag", "tag_min", "tag_max")):
+                        raise SystemExit(
+                            f"signature {rule['name']} has an invalid BER child")
         if rule.get("candidates") is not None and not isinstance(rule["candidates"], list):
             raise SystemExit(f"signature {rule['name']} candidates must be a list")
         for candidate in rule.get("candidates", []):
