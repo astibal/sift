@@ -33,6 +33,18 @@ signatures:
   - name: protocol.ssh.banner-both
     match: [{side: L, op: line_prefix_within, value: "SSH-", limit: 255}, {side: R, op: line_prefix_within, value: "SSH-", limit: 255}]
     candidates: [{side: E, regex: '(^|\x0a)SSH-[12]\.'}]
+  - name: protocol.ftp.control
+    match: [{side: L, op: prefix_any_ci, values: ["USER "]}, {side: R, op: prefix_any, values: ["120 ", "120-", "220 ", "220-"]}]
+    candidates: [{side: L, regex: '^[Uu][Ss][Ee][Rr] '}, {side: R, regex: '^(120|220)[ -]'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig}]
+  - name: protocol.socks4.connect
+    match: [{side: L, op: hex_at, offset: 0, value: "0401"}, {side: R, op: hex_at, offset: 0, value: "005A"}]
+    candidates: [{side: L, regex: '^\x04\x01'}, {side: R, regex: '^\x00\x5a'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig}]
+  - name: protocol.socks5.no-auth
+    match: [{side: L, op: hex_at, offset: 0, value: "050100"}, {side: R, op: hex_at, offset: 0, value: "0500"}]
+    candidates: [{side: L, regex: '^\x05\x01\x00'}, {side: R, regex: '^\x05\x00'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig}]
   - name: protocol.smb1.netbios
     match: [{side: E, op: hex_at, offset: 4, value: FF534D42}]
     candidates: [{side: E, regex: '^....\xffSMB'}]
