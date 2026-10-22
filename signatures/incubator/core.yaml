@@ -317,25 +317,6 @@ signatures:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/mqtt/mqtt.rs#L682-L705
 
-  - id: protocol.rdp.tpkt
-    transport: tcp
-    layer: protocol
-    result: { protocol: rdp }
-    confidence: high
-    logic: all
-    enables: rdp
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 7
-        match: { type: bytes, value_hex: '03' }
-      - side: either
-        offset: 0
-        match: { type: validator, name: rdp.tpkt-x224 }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/rdp/rdp.rs#L440-L469
-
   - id: protocol.redis.resp-dialog
     transport: tcp
     layer: protocol
@@ -353,40 +334,6 @@ signatures:
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/redis/dpd.sig
-
-  - id: protocol.kerberos.as-tgs
-    transport: any
-    layer: protocol
-    result: { protocol: kerberos5 }
-    confidence: high
-    logic: all
-    enables: kerberos
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 12
-        match: { type: validator, name: kerberos5.asn1-application-message }
-    sources:
-      - project: zeek
-        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/krb/dpd.sig
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/krb/krb5.rs
-
-  - id: protocol.ntp.packet
-    transport: udp
-    layer: protocol
-    result: { protocol: ntp }
-    confidence: high
-    logic: all
-    enables: ntp
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 48
-        match: { type: validator, name: ntp.header-version-mode-and-length }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ntp/ntp.rs#L246-L264
 
   - id: protocol.modbus.tcp
     transport: tcp

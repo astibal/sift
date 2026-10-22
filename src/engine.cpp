@@ -136,6 +136,22 @@ bool ber_sequence_matches(const std::string_view stream,
     return clause.value("allow_extra", false) || cursor == outer->end;
 }
 
+bool ber_frame_matches(const std::string_view stream,
+                       const nlohmann::json& clause) {
+    const auto offset = clause.value("offset", 0U);
+    const auto element = ber_element_at(stream, offset);
+    if(!element.has_value() || element->end != stream.size()) return false;
+
+    if(clause.contains("tags")) {
+        const auto tags = clause.at("tags").get<std::vector<std::uint8_t>>();
+        return std::find(tags.begin(), tags.end(), element->tag) != tags.end();
+    }
+
+    const auto minimum = clause.value("tag_min", clause.value("tag", 0U));
+    const auto maximum = clause.value("tag_max", clause.value("tag", 255U));
+    return element->tag >= minimum && element->tag <= maximum;
+}
+
 bool tls_hello(const std::string_view stream, const unsigned char handshake_type) {
     if (stream.size() < 11 || static_cast<unsigned char>(stream[0]) != 0x16 ||
         static_cast<unsigned char>(stream[1]) != 0x03 ||
@@ -224,7 +240,7 @@ void Runtime::load_signature_pack() {
                 needed = clause.at("offset").get<std::size_t>() + 2U;
             } else if(op == "size_between") {
                 needed = clause.value("min", 0U);
-            } else if(op == "ber_sequence") {
+            } else if(op == "ber_sequence" || op == "ber_frame") {
                 needed = clause.value("offset", 0U) + 2U;
             } else if(op == "decimal_prefix") {
                 needed = clause.at("digits").get<std::size_t>() + 1U;
@@ -336,8 +352,18 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
             }
 
             if(clause.contains("mask") &&
-               ((*integer & clause.at("mask").get<std::uint32_t>()) !=
-                clause.value("masked_value", 0U))) return false;
+               clause.contains("masked_values")) {
+                const auto masked = *integer & clause.at("mask").get<std::uint32_t>();
+                const auto accepted = clause.at("masked_values")
+                    .get<std::vector<std::uint32_t>>();
+                if(std::find(accepted.begin(), accepted.end(), masked) == accepted.end()) {
+                    return false;
+                }
+            } else if(clause.contains("mask") &&
+                      ((*integer & clause.at("mask").get<std::uint32_t>()) !=
+                       clause.value("masked_value", 0U))) {
+                return false;
+            }
             return *integer >= clause.value("min", 0U) &&
                    *integer <= clause.value(
                        "max", std::numeric_limits<std::uint32_t>::max());
@@ -352,6 +378,7 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
                    stream.size() <= clause.value("max", std::numeric_limits<std::size_t>::max());
         }
         if(op == "ber_sequence") return ber_sequence_matches(stream, clause);
+        if(op == "ber_frame") return ber_frame_matches(stream, clause);
         if (op == "line_prefix_within") {
             const auto position = stream.find(candidates.at(0));
             return position != std::string_view::npos && position <= clause.value("limit", 0U) &&

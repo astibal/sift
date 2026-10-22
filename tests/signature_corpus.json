@@ -26,6 +26,10 @@
     {"name":"BGP keepalive","expect":"protocol.bgp.message","chunks":[{"side":"R","hex":"ffffffffffffffffffffffffffffffff001304","fields":{"flow.transport":"tcp"}}]},
     {"name":"LDAP simple bind","expect":"protocol.ldap.ber-message","chunks":[{"side":"L","hex":"300c020101600702010304008000","fields":{"flow.transport":"tcp"}}]},
     {"name":"SNMPv2c empty GET","expect":"protocol.snmp.ber-message","chunks":[{"side":"L","hex":"301802010104067075626c6963a00b0201010201000201003000","fields":{"flow.transport":"udp"}}]},
+    {"name":"Kerberos UDP AS-REQ frame","expect":"protocol.kerberos.udp","chunks":[{"side":"L","hex":"6a053003020101","fields":{"flow.transport":"udp"}}]},
+    {"name":"Kerberos TCP AS-REQ frame","expect":"protocol.kerberos.tcp","chunks":[{"side":"L","hex":"000000076a053003020101","fields":{"flow.transport":"tcp"}}]},
+    {"name":"NTPv4 client base packet","expect":"protocol.ntp.base-packet","chunks":[{"side":"L","hex":"230000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","fields":{"flow.transport":"udp"}}]},
+    {"name":"RDP X.224 connection request","expect":"protocol.rdp.x224","chunks":[{"side":"L","hex":"0300000b06e00000000000","fields":{"flow.transport":"tcp"}}]},
     {"name":"RFB duplex banners","expect":"protocol.rfb.banner-both","chunks":[{"side":"L","text":"RFB 003.008\n"},{"side":"R","text":"RFB 003.008\n"}]},
     {"name":"SIP dialog","expect":"protocol.sip.dialog","chunks":[{"side":"L","text":"INVITE sip:user@example.test SIP/2.0\r\n"},{"side":"R","text":"SIP/2.0 100 Trying\r\n"}]},
     {"name":"BitTorrent handshake","expect":"protocol.bittorrent.handshake","chunks":[{"side":"L","hex":"13426974546f7272656e742070726f746f636f6c"}]},
@@ -60,6 +64,10 @@
     {"name":"LDAP rejects generic BER sequence","reject":["protocol.ldap.ber-message"],"chunks":[{"side":"L","hex":"3006020101040178","fields":{"flow.transport":"tcp"}}]},
     {"name":"SNMP rejects LDAP application operation","reject":["protocol.snmp.ber-message"],"chunks":[{"side":"L","hex":"300c020101600702010304008000","fields":{"flow.transport":"udp"}}]},
     {"name":"BER rejects indefinite length","reject":["protocol.ldap.ber-message","protocol.snmp.ber-message"],"chunks":[{"side":"L","hex":"30800201016000000000","fields":{"flow.transport":"tcp"}}]},
+    {"name":"Kerberos rejects non-application BER tag","reject":["protocol.kerberos.udp"],"chunks":[{"side":"L","hex":"3003020101","fields":{"flow.transport":"udp"}}]},
+    {"name":"Kerberos TCP rejects wrong prefix length","reject":["protocol.kerberos.tcp"],"chunks":[{"side":"L","hex":"000000086a053003020101","fields":{"flow.transport":"tcp"}}]},
+    {"name":"NTP rejects unsupported version","reject":["protocol.ntp.base-packet"],"chunks":[{"side":"L","hex":"0b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","fields":{"flow.transport":"udp"}}]},
+    {"name":"RDP rejects inconsistent TPKT length","reject":["protocol.rdp.x224"],"chunks":[{"side":"L","hex":"0300000c06e00000000000","fields":{"flow.transport":"tcp"}}]},
     {"name":"PostgreSQL SSLRequest requires response","reject":["protocol.postgresql.sslrequest"],"chunks":[{"side":"L","hex":"0000000804d2162f"}]}
   ]
 }

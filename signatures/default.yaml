@@ -81,6 +81,22 @@ signatures:
     match: [{field: flow.transport, op: equals_any, values: [udp, tcp]}, {side: E, op: ber_sequence, tag: 48, children: [{tag: 2}, {tag: 4}, {tag_min: 160, tag_max: 168}]}]
     candidates: [{side: E, regex: '^\x30'}]
     sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc3416.html#section-4}]
+  - name: protocol.kerberos.udp
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: ber_frame, tags: [106, 107, 108, 109, 110, 111, 116, 117, 118, 126]}]
+    candidates: [{side: E, regex: '^[\x6a-\x6f\x74-\x76\x7e]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc4120.html#section-5.10}]
+  - name: protocol.kerberos.tcp
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_from_uint_at, offset: 0, width: 4, endian: be, adjustment: 4}, {side: E, op: ber_frame, offset: 4, tags: [106, 107, 108, 109, 110, 111, 116, 117, 118, 126]}]
+    candidates: [{side: E, regex: '^....[\x6a-\x6f\x74-\x76\x7e]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc4120.html#section-7.2.2}]
+  - name: protocol.ntp.base-packet
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 48, max: 48}, {side: E, op: uint_at, offset: 0, width: 1, endian: be, mask: 56, masked_values: [24, 32]}, {side: E, op: uint_at, offset: 0, width: 1, endian: be, mask: 7, masked_values: [1, 2, 3, 4, 5]}]
+    candidates: [{side: E, regex: '^[\x19-\x1d\x21-\x25\x59-\x5d\x61-\x65\x99-\x9d\xa1-\xa5\xd9-\xdd\xe1-\xe5]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc5905.html#section-7.3}]
+  - name: protocol.rdp.x224
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 7, max: 65535}, {side: E, op: hex_at, offset: 0, value: "0300"}, {side: E, op: size_from_uint_at, offset: 2, width: 2, endian: be}, {side: E, op: uint_at, offset: 5, width: 1, endian: be, masked_values: [208, 224], mask: 255}]
+    candidates: [{side: E, regex: '^\x03\x00...[\xd0\xe0]'}]
+    sources: [{project: suricata, url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/rdp/rdp.rs#L440-L469}]
   - name: protocol.rfb.banner-both
     match: [{side: L, op: prefix, value: "RFB "}, {side: R, op: prefix, value: "RFB "}]
     candidates: [{side: E, regex: '^RFB '}]
