@@ -13,7 +13,7 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | SSH | covered | Duplex banners |
 | FTP control | covered | Duplex greeting/`USER` plus TLS ALPN |
 | SMTP, IMAP, POP3 | covered | Plain dialogues; IMAP and POP3 also have TLS ALPN |
-| DNS | covered | TCP/UDP framing plus DNS-over-TLS ALPN |
+| DNS | covered | TCP/UDP framing plus DoT, DoH and DoQ metadata evidence |
 | SMB | covered | SMB1/2, encrypted SMB3 headers, and SMB TLS ALPN |
 | LDAP | covered | Exact BER frame with message ID and application operation |
 | Kerberos | covered | UDP BER application frames and TCP length framing |

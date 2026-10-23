@@ -100,11 +100,17 @@ def main() -> None:
     # for an application or protocol. The matching evidence can differ, but
     # consumers must be able to use the same plain label after inspection.
     for name in names:
-        for prefix in ("enc.tls.", "enc.quic."):
-            if name.startswith(prefix) and name[len(prefix):] not in names:
+        for prefix in ("enc.tls.", "enc.http.", "enc.quic."):
+            if not name.startswith(prefix):
+                continue
+
+            counterpart = name[len(prefix):]
+            has_counterpart = counterpart in names or any(
+                plain.startswith(counterpart + ".") for plain in names)
+            if not has_counterpart:
                 raise SystemExit(
                     f"encrypted signature {name} has no plain counterpart "
-                    f"{name[len(prefix):]}")
+                    f"{counterpart}")
 
     encoded = json.dumps(document, separators=(",", ":"), ensure_ascii=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)

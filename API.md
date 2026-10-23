@@ -278,11 +278,11 @@ Flat dotted names are the wire format. Initial canonical fields are:
 flow.tls.sni
 flow.tls.alpn
 flow.http1
-flow.http1.method | host      | path | scheme | url
+flow.http1.method | host      | path | scheme | url | content_type | accept | subprotocol
 flow.http2
-flow.http2.method | authority | path | scheme | url
+flow.http2.method | authority | path | scheme | url | content_type | accept | subprotocol
 flow.http3
-flow.http3.method | authority | path | scheme | url
+flow.http3.method | authority | path | scheme | url | content_type | accept | subprotocol
 ```
 
 `flow.tls.sni` and `flow.tls.alpn` mean the requestor observed the values during
@@ -302,6 +302,12 @@ normalized composition of the parsed scheme, authority/host, path, and query;
 it is convenient derived flow evidence, while the individual fields preserve
 the actual parsed components. Fields are omitted until the requestor has a
 complete parsed request.
+
+`content_type` and `accept` are normalized request-header observations.
+`subprotocol` is stronger requestor evidence produced only after its application
+engine has positively validated an encapsulated protocol. Sift classifies DoH
+from `application/dns-message` or a validated `dns` subprotocol, DoT from ALPN
+`dot`, and DoQ from ALPN `doq`. A `/dns-query` path alone is not sufficient.
 
 Smithproxy emits the TLS observation and the HTTP/1.x and HTTP/2 observations
 available from its application inspector. Its HTTP/3 path submits decoded
