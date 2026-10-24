@@ -323,8 +323,9 @@ complete parsed request.
 `content_type` and `accept` are normalized request-header observations.
 `subprotocol` is stronger requestor evidence produced only after its application
 engine has positively validated an encapsulated protocol. Sift classifies DoH
-from `application/dns-message` or a validated `dns` subprotocol, DoT from ALPN
-`dot`, and DoQ from ALPN `doq`. A `/dns-query` path alone is not sufficient.
+as `protocol.doh` from `application/dns-message` or a validated `dns`
+subprotocol. DoT is inferred as `enc.tls.protocol.dns` from ALPN `dot`, and DoQ
+from ALPN `doq`. A `/dns-query` path alone is not sufficient.
 
 Smithproxy emits the TLS observation and the HTTP/1.x and HTTP/2 observations
 available from its application inspector. Its HTTP/3 path submits decoded

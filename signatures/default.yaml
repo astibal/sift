@@ -26,7 +26,7 @@ signatures:
   - name: enc.tls.protocol.dns
     match: [{field: flow.tls.alpn, op: equals_any, values: [dot]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
-  - name: enc.http.protocol.dns
+  - name: protocol.doh
     match: [{fields: [flow.http1.content_type, flow.http1.accept, flow.http1.subprotocol, flow.http2.content_type, flow.http2.accept, flow.http2.subprotocol, flow.http3.content_type, flow.http3.accept, flow.http3.subprotocol], op: equals_any, values: [application/dns-message, dns]}]
     sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc8484.html}]
   - name: enc.quic.protocol.dns

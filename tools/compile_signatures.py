@@ -12,6 +12,10 @@ ALLOWED_OPERATIONS = {
     "ber_frame", "candidate_seen",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
+ENCRYPTED_NAMESPACES = {
+    "enc.tls.": "flow.tls.",
+    "enc.quic.": "flow.quic.",
+}
 
 
 def main() -> None:
@@ -32,6 +36,15 @@ def main() -> None:
         names.add(rule["name"])
         if not isinstance(rule.get("match"), list) or not rule["match"]:
             raise SystemExit(f"signature {rule['name']} has no match clauses")
+        encrypted_field_prefix = next(
+            (field_prefix for name_prefix, field_prefix in ENCRYPTED_NAMESPACES.items()
+             if rule["name"].startswith(name_prefix)),
+            None,
+        )
+        if rule["name"].startswith("enc.") and encrypted_field_prefix is None:
+            raise SystemExit(
+                f"signature {rule['name']} uses an unsupported encrypted namespace")
+        encrypted_evidence = False
         for clause in rule["match"]:
             if not isinstance(clause, dict) or clause.get("op") not in ALLOWED_OPERATIONS:
                 raise SystemExit(f"signature {rule['name']} has an unsupported match operation")
@@ -49,6 +62,14 @@ def main() -> None:
                     not clause["fields"] or
                     not all(isinstance(field, str) and field for field in clause["fields"])):
                 raise SystemExit(f"signature {rule['name']} has invalid field names")
+            clause_fields = ([clause["field"]] if has_field else
+                             clause.get("fields", []))
+            if encrypted_field_prefix is not None:
+                if any(field.startswith("flow.http") for field in clause_fields):
+                    raise SystemExit(
+                        f"encrypted signature {rule['name']} uses plaintext HTTP evidence")
+                encrypted_evidence |= any(
+                    field.startswith(encrypted_field_prefix) for field in clause_fields)
             if ("value" not in clause and "values" not in clause and
                     clause["op"] not in {
                         "tls_handshake", "decimal_prefix", "uint_at",
@@ -95,12 +116,15 @@ def main() -> None:
                 raise SystemExit(f"signature {rule['name']} has an invalid candidate")
             if candidate.get("side", "E") not in {"L", "R", "E"}:
                 raise SystemExit(f"signature {rule['name']} candidate has an unsupported side")
+        if encrypted_field_prefix is not None and not encrypted_evidence:
+            raise SystemExit(
+                f"encrypted signature {rule['name']} has no {encrypted_field_prefix} evidence")
 
     # An encrypted-evidence verdict must never be the only vocabulary exposed
     # for an application or protocol. The matching evidence can differ, but
     # consumers must be able to use the same plain label after inspection.
     for name in names:
-        for prefix in ("enc.tls.", "enc.http.", "enc.quic."):
+        for prefix in ENCRYPTED_NAMESPACES:
             if not name.startswith(prefix):
                 continue
 

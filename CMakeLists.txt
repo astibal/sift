@@ -93,6 +93,10 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/protocols-extra.yaml
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/services.yaml
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/content.yaml)
+    add_test(NAME sift_signature_policy_tests
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/signature_policy_tests.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compile_signatures.py)
 
     if(SIFT_COVERAGE)
         add_custom_target(coverage

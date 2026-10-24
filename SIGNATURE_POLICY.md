@@ -70,9 +70,10 @@ should have complementary signatures for both:
 1. encrypted traffic, classified from observable encryption-layer metadata;
 2. plaintext traffic, including content made available by TLS inspection.
 
-Signatures whose conclusion is inferred from encrypted traffic use the
-`enc.<layer>.*` namespace. The layer identifies the source of the evidence, for
-example:
+The `enc.*` prefix is reserved exclusively for conclusions inferred without
+access to the protected plaintext. A signature must not use `enc.*` merely
+because the original connection used TLS or QUIC. The layer identifies the
+encrypted evidence source, for example:
 
 ```text
 enc.tls.app.youtube.video
@@ -83,6 +84,13 @@ Such rules may use evidence including SNI, ALPN, certificates, handshake
 properties, and encryption-layer fingerprints. Their name must preserve that
 the result is an inference from encrypted traffic rather than a classification
 based on the protected application bytes.
+
+Parsed application observations such as `flow.http1.*`, `flow.http2.*`, and
+`flow.http3.*` are plaintext/L7 evidence. A rule based on HTTP headers,
+authority, path, decoded content, or a validated HTTP subprotocol therefore
+uses `protocol.*` or `app.*`, never `enc.*`. For example, a decoded
+`application/dns-message` request is `protocol.doh`, while an ALPN-only DNS
+inference remains `enc.tls.protocol.dns` or `enc.quic.protocol.dns`.
 
 Plaintext signatures retain the existing namespaces without an inspection,
 plaintext, or decrypted prefix:
@@ -97,3 +105,7 @@ a TLS inspection component. If both encrypted-layer metadata and inspected
 plaintext are available for one flow, both signature families may run and both
 results may be reported. A plaintext match does not suppress the corresponding
 `enc.*` match.
+
+When plaintext is available, the signature pack should provide and prefer the
+corresponding `protocol.*` or `app.*` result. It may additionally report an
+`enc.*` result when independent encrypted-layer evidence also matches.
