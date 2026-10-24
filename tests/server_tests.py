@@ -143,6 +143,10 @@ def main():
             "action": "connection-content",
             "id": "lore-flow",
             "identity": {"tenant": "test", "instance": "integration"},
+            "requirements": {"lored": {
+                "mode": "optional",
+                "include_url": False,
+            }},
             "details": {"info": {
                 "side": "L",
                 "flow.source.address": "10.0.0.42",
@@ -154,14 +158,21 @@ def main():
                 "flow.http2.authority": "www.example.com",
             }},
         }
+        no_lored = json.loads(json.dumps(content))
+        no_lored["id"] = "no-lored-flow"
+        del no_lored["requirements"]
+        status, plain = request(port, "POST", "/webhook", json.dumps(no_lored))
+        check(status == 200 and "lored" not in plain,
+              "LoreD result was attached without a request requirement")
+
         status, enriched = request(port, "POST", "/webhook", json.dumps(content))
-        check(status == 200 and enriched["lore"]["status"] == "matched",
+        check(status == 200 and enriched["lored"]["status"] == "matched",
               "Lored verdict was not attached")
         check(enriched["dns_evidence"]["status"] == "matched" and
               enriched["dns_evidence"]["observations"][0]["hostname"] ==
                   "dns.example.com",
               "passive DNS evidence was not attached")
-        check(enriched["lore"]["candidates"][0]["value"] == "service.example",
+        check(enriched["lored"]["candidates"][0]["value"] == "service.example",
               "wrong Lored candidate")
         check(lore_requests[-1]["sni"] == "Example.COM.",
               "SNI was not forwarded to Lored")
@@ -187,7 +198,7 @@ def main():
         shared = json.loads(json.dumps(content))
         shared["id"] = "shared-cache-flow"
         status, shared_reply = request(port, "POST", "/webhook", json.dumps(shared))
-        check(status == 200 and shared_reply["lore"]["status"] == "matched",
+        check(status == 200 and shared_reply["lored"]["status"] == "matched",
               "shared LoreD cache did not return the verdict")
         check(len(lore_requests) == 1,
               "shared LoreD cache sent a duplicate request")
@@ -198,7 +209,7 @@ def main():
             limited["details"]["info"]["flow.tls.sni"] = f"unknown-{index}.example"
             status, limited_reply = request(
                 port, "POST", "/webhook", json.dumps(limited))
-            check(status == 200 and limited_reply["lore"]["status"] == "unknown",
+            check(status == 200 and limited_reply["lored"]["status"] == "unknown",
                   "unknown LoreD verdict was not retained")
         check(len(lore_requests) == 6,
               "per-flow LoreD request limit was not enforced")
@@ -210,8 +221,15 @@ def main():
         failing["details"]["info"]["flow.tls.sni"] = "unavailable.example"
         status, unavailable = request(
             port, "POST", "/webhook", json.dumps(failing))
-        check(status == 200 and unavailable["lore"]["status"] == "unavailable",
+        check(status == 200 and unavailable["lored"]["status"] == "unavailable",
               "optional LoreD failure changed the Sift response status")
+
+        failing["requirements"]["lored"]["mode"] = "required"
+        failing["id"] = "required-unavailable-flow"
+        status, unavailable = request(
+            port, "POST", "/webhook", json.dumps(failing))
+        check(status == 503 and unavailable["lored"]["status"] == "unavailable",
+              "required LoreD failure did not fail the Sift request")
 
         identity = {"tenant": "test", "instance": "integration"}
         start = {"action": "connection-start", "id": "flow", "identity": identity}
@@ -236,9 +254,9 @@ def main():
               "connection-stop did not create a tombstone")
 
         status, diagnostics = request(port, "GET", "/api/diagnostics")
-        check(status == 200 and diagnostics["lored"]["requests"] == 7,
+        check(status == 200 and diagnostics["lored"]["requests"] == 8,
               "Lored diagnostics are missing")
-        check(diagnostics["lored"]["failures"] == 1,
+        check(diagnostics["lored"]["failures"] == 2,
               "Lored failure was not diagnosed")
         check(diagnostics["lored"]["shared_cache_hits"] == 1,
               "shared LoreD cache hit was not diagnosed")

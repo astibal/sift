@@ -473,7 +473,8 @@ int main() {
     const sift::FlowKey lore_key{{"test", "unit", false}, "disabled"};
     check(!disabled_lore.enabled() && !disabled_lore.required(),
           "empty LoreD configuration was not disabled");
-    check(disabled_lore.enrich(lore_key, {}, {}, lore_attempted, lore_succeeded)
+    check(disabled_lore.enrich(
+              lore_key, {}, {}, sift::LoredRequest{}, lore_attempted, lore_succeeded)
               .at("status") == "disabled",
           "disabled LoreD client returned a wrong status");
     check(disabled_lore.status().at("requests") == 0,
@@ -487,7 +488,8 @@ int main() {
     optional_config.url = "http://127.0.0.1:1/v1/query";
     optional_config.mode = sift::LoredMode::optional;
     sift::LoredClient optional_lore(optional_config);
-    check(optional_lore.enrich(lore_key, {}, {}, lore_attempted, lore_succeeded)
+    check(optional_lore.enrich(
+              lore_key, {}, {}, sift::LoredRequest{}, lore_attempted, lore_succeeded)
               .at("status") == "not-applicable",
           "LoreD queried without a useful destination hint");
     check(optional_lore.status().at("skipped") == 1,

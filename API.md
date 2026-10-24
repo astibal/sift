@@ -4,8 +4,9 @@ Sift accepts an SXBN001 envelope containing JSON metadata followed by the raw
 payload bytes. The payload is authoritative content; metadata describes the
 requestor's observation of the surrounding flow.
 
-When LoreD enrichment is configured, the normal verdict contains a `lore`
-member with the `lored-verdict/1` response. Sift builds the deliberately small
+LoreD is queried only when the request contains `requirements.lored`. The
+normal verdict then contains a `lored` member with the `lored-verdict/1`
+response. Sift builds the deliberately small
 query from `flow.tls.sni`, HTTP host/authority, protocol observations, and these
 optional destination fields:
 
@@ -18,6 +19,22 @@ flow.transport
 Compatibility aliases `flow.dst.ip`, `flow.dst.port`, `flow.remote.ip`, and
 `flow.remote.port` are accepted. Lore candidates and Sift payload signatures
 remain separate evidence domains.
+
+```json
+{
+  "requirements": {
+    "lored": {
+      "mode": "optional",
+      "include_url": false
+    }
+  }
+}
+```
+
+`mode` is `optional` or `required`. With `required`, an applicable failed
+lookup returns HTTP 503. `include_url` defaults to false and is the explicit
+privacy opt-in required before Sift may forward a complete observed URL,
+including its path and query string, to LoreD.
 
 ## Passive DNS evidence
 

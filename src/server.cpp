@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <memory>
 #include <netinet/in.h>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -72,6 +74,23 @@ std::string identifier_field(const nlohmann::json& object, const char* name) {
 
 bool loopback_peer(const std::string_view address) {
     return address == "127.0.0.1" || address == "::1";
+}
+
+std::optional<LoredRequest> lored_request(const nlohmann::json& event) {
+    const auto requirements = event.find("requirements");
+    if(requirements == event.end() || !requirements->is_object()) return std::nullopt;
+
+    const auto lored = requirements->find("lored");
+    if(lored == requirements->end() || !lored->is_object()) return std::nullopt;
+
+    const auto mode = lored->value("mode", "optional");
+    LoredRequest request;
+    if(mode == "optional") request.mode = LoredMode::optional;
+    else if(mode == "required") request.mode = LoredMode::required;
+    else throw std::invalid_argument("requirements.lored.mode must be optional or required");
+
+    request.include_url = lored->value("include_url", false);
+    return request;
 }
 
 std::string first_metadata_value(
@@ -254,7 +273,9 @@ private:
                                   {"fallback", "peer-ip"}}},
                     {"enrichment", {{"lored", {
                         {"mode", lored_mode_name(config_.lored.mode)},
-                        {"enabled", lored_.enabled()}}},
+                        {"enabled", lored_.enabled()},
+                        {"request_conditioned", true},
+                        {"url_opt_in", true}}},
                         {"dns_evidence", {
                             {"endpoint", "/api/dns-observation"},
                             {"format", "sift-dns-observation/1"}}}}},
@@ -286,6 +307,14 @@ private:
 
         if (action != "connection-content") {
             return nlohmann::json::object();
+        }
+
+        std::optional<LoredRequest> requested_lored;
+        try {
+            requested_lored = lored_request(event);
+        } catch(const std::exception& error) {
+            status = 400;
+            return {{"error", error.what()}};
         }
 
         const auto details = event.value("details", nlohmann::json::object());
@@ -397,18 +426,28 @@ private:
         auto reply = verdict_json(verdict);
         reply["dns_evidence"] = std::move(dns_evidence);
 
-        bool lore_attempted{};
-        bool lore_succeeded{};
-        try {
-            reply["lore"] = lored_.enrich(
-                key, metadata, verdict, lore_attempted, lore_succeeded);
-        } catch(const std::exception& error) {
-            reply["lore"] = {
-                {"status", "unavailable"},
-                {"error", error.what()},
-            };
+        if(requested_lored.has_value()) {
+            bool lored_attempted{};
+            bool lored_succeeded{};
+            if(!lored_.enabled()) {
+                reply["lored"] = {
+                    {"status", "unavailable"},
+                    {"error", "LoreD is not configured"},
+                };
+                if(requested_lored->mode == LoredMode::required) status = 503;
+            } else try {
+                reply["lored"] = lored_.enrich(
+                    key, metadata, verdict, *requested_lored,
+                    lored_attempted, lored_succeeded);
+            } catch(const std::exception& error) {
+                reply["lored"] = {
+                    {"status", "unavailable"},
+                    {"error", error.what()},
+                };
 
-            if(lored_.required() && lore_attempted) status = 503;
+                if(requested_lored->mode == LoredMode::required && lored_attempted)
+                    status = 503;
+            }
         }
 
         if(anonymous) {

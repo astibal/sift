@@ -23,16 +23,21 @@ LoreD remains disabled unless its query URL is configured:
 build/siftd --lored-url http://127.0.0.1:8091/v1/query
 ```
 
-The configured default is `optional`: a failed lookup appears as
-`lore.status: unavailable`, while the Sift verdict remains usable. With
-`--lored-mode required`, an applicable failed lookup returns HTTP 503. Requests
+Smithproxy or another caller must explicitly request enrichment through
+`requirements.lored.mode`. An optional failed lookup appears as
+`lored.status: unavailable`, while the Sift verdict remains usable. A required
+applicable failed lookup returns HTTP 503. Requests
 without an IP, SNI or HTTP host are `not-applicable`, because LoreD has nothing
 meaningful to query. The timeout defaults to 50 ms and is configurable through
 `--lored-timeout-ms`.
 
-LoreD candidates remain nested under `lore`; Sift never presents them as
+LoreD candidates remain nested under `lored`; Sift never presents them as
 payload signature matches. `/api/diagnostics` exposes LoreD requests, outcomes
 and latency.
+
+Complete HTTP URLs are private by default. They are forwarded only when the
+request sets `requirements.lored.include_url` to true; destination IP, port,
+transport, SNI, Host/authority and protocol remain the default query surface.
 
 Sift accumulates relevant flow observations and sends a new query only when
 the normalized destination, SNI, HTTP host/authority or protocol fingerprint

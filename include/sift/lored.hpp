@@ -26,6 +26,11 @@ struct LoredConfig {
     std::uint32_t cache_ttl_seconds{300};
 };
 
+struct LoredRequest {
+    LoredMode mode{LoredMode::optional};
+    bool include_url{};
+};
+
 class LoredClient {
 public:
     explicit LoredClient(LoredConfig config);
@@ -34,13 +39,14 @@ public:
     [[nodiscard]] bool required() const noexcept;
     [[nodiscard]] nlohmann::json enrich(
         const FlowKey& key, const InspectionMetadata& metadata, const Verdict& verdict,
-        bool& attempted, bool& succeeded);
+        const LoredRequest& request, bool& attempted, bool& succeeded);
     void close(const FlowKey& key);
     [[nodiscard]] nlohmann::json status() const;
 
 private:
     [[nodiscard]] nlohmann::json build_query(
-        const InspectionMetadata& metadata, const Verdict& verdict) const;
+        const InspectionMetadata& metadata, const Verdict& verdict,
+        bool include_url) const;
     void sweep_cache_locked(std::chrono::steady_clock::time_point now);
 
     struct FlowState {

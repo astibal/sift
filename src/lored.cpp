@@ -109,7 +109,8 @@ bool LoredClient::required() const noexcept {
 }
 
 nlohmann::json LoredClient::build_query(
-    const InspectionMetadata& metadata, const Verdict& verdict) const {
+    const InspectionMetadata& metadata, const Verdict& verdict,
+    const bool include_url) const {
     nlohmann::json query = nlohmann::json::object();
 
     if(const auto ip = first_value(metadata, {
@@ -137,6 +138,13 @@ nlohmann::json LoredClient::build_query(
         query["host"] = *host;
     }
 
+    if(include_url) {
+        if(const auto url = first_value(metadata, {
+                "flow.http3.url", "flow.http2.url", "flow.http1.url"})) {
+            query["url"] = url->substr(0, 2048);
+        }
+    }
+
     const auto protocol = protocol_hint(metadata, verdict);
     if(!protocol.empty()) query["protocol"] = protocol.substr(0, 64);
 
@@ -145,7 +153,7 @@ nlohmann::json LoredClient::build_query(
 
 nlohmann::json LoredClient::enrich(
     const FlowKey& key, const InspectionMetadata& metadata, const Verdict& verdict,
-    bool& attempted, bool& succeeded) {
+    const LoredRequest& request, bool& attempted, bool& succeeded) {
     attempted = false;
     succeeded = false;
 
@@ -167,7 +175,8 @@ nlohmann::json LoredClient::enrich(
         accumulated_verdict = flow->verdict;
     }
 
-    const auto query = build_query(accumulated_metadata, accumulated_verdict);
+    const auto query = build_query(
+        accumulated_metadata, accumulated_verdict, request.include_url);
     if(!query.contains("ip") && !query.contains("sni") && !query.contains("host")) {
         std::scoped_lock guard(lock_);
         ++skipped_;
@@ -217,16 +226,16 @@ nlohmann::json LoredClient::enrich(
     CurlHandle curl;
     if(curl.value == nullptr) throw std::runtime_error("cannot initialize libcurl");
 
-    const auto request = query.dump();
+    const auto request_body = query.dump();
     std::string response;
     CurlHeaders headers;
     headers.value = curl_slist_append(headers.value, "Content-Type: application/json");
 
     curl_easy_setopt(curl.value, CURLOPT_URL, config_.url.c_str());
     curl_easy_setopt(curl.value, CURLOPT_HTTPHEADER, headers.value);
-    curl_easy_setopt(curl.value, CURLOPT_POSTFIELDS, request.data());
+    curl_easy_setopt(curl.value, CURLOPT_POSTFIELDS, request_body.data());
     curl_easy_setopt(curl.value, CURLOPT_POSTFIELDSIZE,
-                     static_cast<long>(request.size()));
+                     static_cast<long>(request_body.size()));
     curl_easy_setopt(curl.value, CURLOPT_WRITEFUNCTION, append_response);
     curl_easy_setopt(curl.value, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl.value, CURLOPT_TIMEOUT_MS,
