@@ -1,4 +1,16 @@
 version: 1
+# Pinned research provenance retained when candidates leave the incubator.
+x-promotion-sources:
+  stun: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-stun.c
+  wireguard: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-wireguard.c
+  dhcp: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dhcp/dpd.sig
+  ajp13: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-ajp13.c
+  memcached: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-memcache.c
+  diameter: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-diameter.c
+  gtp: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-gtp.c
+  radius: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-radius.c
+  kafka: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-kafka.c
+  iec104: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c
 signatures:
   - name: protocol.http1.request
     match: [{side: L, op: prefix_any, values: ["OPTIONS ", "GET ", "HEAD ", "POST ", "PUT ", "DELETE ", "CONNECT ", "PATCH ", "PROPFIND ", "PROPPATCH ", "TRACE ", "UPDATE "]}]
@@ -59,6 +71,42 @@ signatures:
     match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 1200, max: 65535}, {side: L, op: uint_at, offset: 0, width: 1, endian: be, mask: 240, masked_value: 208}, {side: L, op: hex_at, offset: 1, value: "6B3343CF"}, {side: L, op: quic_long_header, has_token_length: true, max_connection_id_length: 20}]
     candidates: [{side: L, regex: '^[\xd0-\xdf]\x6b\x33\x43\xcf'}]
     sources: [{project: zeek, url: https://github.com/OISF/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig}]
+  - name: protocol.stun.binding-request
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 20, max: 65555}, {side: L, op: hex_at, offset: 0, value: "0001"}, {side: L, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 20}, {side: L, op: hex_at, offset: 4, value: "2112A442"}]
+    candidates: [{side: L, regex: '^\x00\x01..\x21\x12\xa4\x42'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5}]
+  - name: protocol.stun.binding-indication
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 20, max: 65555}, {side: L, op: hex_at, offset: 0, value: "0011"}, {side: L, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 20}, {side: L, op: hex_at, offset: 4, value: "2112A442"}]
+    candidates: [{side: L, regex: '^\x00\x11..\x21\x12\xa4\x42'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5}]
+  - name: protocol.stun.binding-success
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: R, op: size_between, min: 20, max: 65555}, {side: R, op: hex_at, offset: 0, value: "0101"}, {side: R, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 20}, {side: R, op: hex_at, offset: 4, value: "2112A442"}]
+    candidates: [{side: R, regex: '^\x01\x01..\x21\x12\xa4\x42'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5}]
+  - name: protocol.stun.binding-error
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: R, op: size_between, min: 20, max: 65555}, {side: R, op: hex_at, offset: 0, value: "0111"}, {side: R, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 20}, {side: R, op: hex_at, offset: 4, value: "2112A442"}]
+    candidates: [{side: R, regex: '^\x01\x11..\x21\x12\xa4\x42'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5}]
+  - name: protocol.wireguard.handshake-initiation
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 148, max: 148}, {side: L, op: hex_at, offset: 0, value: "01000000"}]
+    candidates: [{side: L, regex: '^\x01\x00\x00\x00'}]
+    sources: [{project: wireguard, url: https://www.wireguard.com/protocol/}]
+  - name: protocol.wireguard.handshake-response
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: R, op: size_between, min: 92, max: 92}, {side: R, op: hex_at, offset: 0, value: "02000000"}]
+    candidates: [{side: R, regex: '^\x02\x00\x00\x00'}]
+    sources: [{project: wireguard, url: https://www.wireguard.com/protocol/}]
+  - name: protocol.wireguard.cookie-reply
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: R, op: size_between, min: 64, max: 64}, {side: R, op: hex_at, offset: 0, value: "03000000"}]
+    candidates: [{side: R, regex: '^\x03\x00\x00\x00'}]
+    sources: [{project: wireguard, url: https://www.wireguard.com/protocol/}]
+  - name: protocol.wireguard.transport-data
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 32, max: 65535}, {side: E, op: hex_at, offset: 0, value: "04000000"}]
+    candidates: [{side: E, regex: '^\x04\x00\x00\x00'}]
+    sources: [{project: wireguard, url: https://www.wireguard.com/protocol/}]
+  - name: protocol.dhcp.cookie
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 240, max: 65535}, {side: E, op: hex_at, offset: 236, value: "63825363"}]
+    candidates: [{side: E, regex: '^.{236}\x63\x82\x53\x63'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc2131.html#section-2}]
   - name: protocol.ssh.banner-both
     match: [{side: L, op: line_prefix_within, value: "SSH-", limit: 255}, {side: R, op: line_prefix_within, value: "SSH-", limit: 255}]
     candidates: [{side: E, regex: '(^|\x0a)SSH-[12]\.'}]
@@ -184,9 +232,64 @@ signatures:
   - name: protocol.ajp13.cpong
     match: [{side: R, op: hex_at, offset: 0, value: "4142000109"}]
     candidates: [{side: R, regex: '^AB\x00\x01\x09'}]
+  - name: protocol.ajp13.forward-request
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: L, op: size_between, min: 5, max: 65539}, {side: L, op: hex_at, offset: 0, value: "1234"}, {side: L, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 4}, {side: L, op: hex_at, offset: 4, value: "02"}]
+    candidates: [{side: L, regex: '^\x12\x34..\x02'}]
+    sources: [{project: tomcat, url: https://tomcat.apache.org/connectors-doc/ajp/ajpv13a.html}]
+  - name: protocol.ajp13.shutdown
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: L, op: size_between, min: 5, max: 65539}, {side: L, op: hex_at, offset: 0, value: "1234"}, {side: L, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 4}, {side: L, op: hex_at, offset: 4, value: "07"}]
+    candidates: [{side: L, regex: '^\x12\x34..\x07'}]
+    sources: [{project: tomcat, url: https://tomcat.apache.org/connectors-doc/ajp/ajpv13a.html}]
   - name: protocol.memcached.ascii
     match: [{side: L, op: prefix_any, values: ["get ", "gets ", "set ", "add ", "replace ", "append ", "prepend ", "cas ", "delete ", "incr ", "decr ", "touch ", "stats\r", "version\r", flush_all]}]
     candidates: [{side: L, regex: '^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) '}, {side: L, regex: '^(stats|version)\x0d'}, {side: L, regex: '^flush_all'}]
+  - name: protocol.memcached.binary-request
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: L, op: size_between, min: 24, max: 16777239}, {side: L, op: hex_at, offset: 0, value: "80"}, {side: L, op: size_from_uint_at, offset: 8, width: 4, endian: be, adjustment: 24}]
+    candidates: [{side: L, regex: '^\x80.......'}]
+    sources: [{project: memcached, url: https://github.com/memcached/memcached/blob/1.6.39/doc/protocol-binary.xml}]
+  - name: protocol.memcached.binary-response
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: R, op: size_between, min: 24, max: 16777239}, {side: R, op: hex_at, offset: 0, value: "81"}, {side: R, op: size_from_uint_at, offset: 8, width: 4, endian: be, adjustment: 24}]
+    candidates: [{side: R, regex: '^\x81.......'}]
+    sources: [{project: memcached, url: https://github.com/memcached/memcached/blob/1.6.39/doc/protocol-binary.xml}]
+  - name: protocol.diameter.request
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: L, op: size_between, min: 20, max: 16777215}, {side: L, op: hex_at, offset: 0, value: "01"}, {side: L, op: size_from_uint_at, offset: 1, width: 3, endian: be}, {side: L, op: uint_at, offset: 4, width: 1, endian: be, mask: 128, masked_value: 128}, {side: L, op: uint_at, offset: 5, width: 3, endian: be, min: 1}]
+    candidates: [{side: L, regex: '^\x01...[\x80-\xff]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc6733.html#section-3}]
+  - name: protocol.diameter.answer
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: R, op: size_between, min: 20, max: 16777215}, {side: R, op: hex_at, offset: 0, value: "01"}, {side: R, op: size_from_uint_at, offset: 1, width: 3, endian: be}, {side: R, op: uint_at, offset: 4, width: 1, endian: be, mask: 128, masked_value: 0}, {side: R, op: uint_at, offset: 5, width: 3, endian: be, min: 1}]
+    candidates: [{side: R, regex: '^\x01...[\x00-\x7f]'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc6733.html#section-3}]
+  - name: protocol.gtp.v1
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 8, max: 65543}, {side: E, op: uint_at, offset: 0, width: 1, endian: be, mask: 224, masked_value: 32}, {side: E, op: uint_at, offset: 1, width: 1, endian: be, min: 1}, {side: E, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 8}]
+    candidates: [{side: E, regex: '^[\x20-\x3f].'}]
+    sources: [{project: etsi, url: https://www.etsi.org/deliver/etsi_ts/129000_129099/129060/17.02.00_60/ts_129060v170200p.pdf}]
+  - name: protocol.gtp.v2
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: E, op: size_between, min: 8, max: 65539}, {side: E, op: uint_at, offset: 0, width: 1, endian: be, mask: 224, masked_value: 64}, {side: E, op: uint_at, offset: 1, width: 1, endian: be, min: 1}, {side: E, op: size_from_uint_at, offset: 2, width: 2, endian: be, adjustment: 4}]
+    candidates: [{side: E, regex: '^[\x40-\x5f].'}]
+    sources: [{project: etsi, url: https://www.etsi.org/deliver/etsi_ts/129200_129299/129274/17.11.00_60/ts_129274v171100p.pdf}]
+  - name: protocol.radius.access-request
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 20, max: 4096}, {side: L, op: hex_at, offset: 0, value: "01"}, {side: L, op: size_from_uint_at, offset: 2, width: 2, endian: be}]
+    candidates: [{side: L, regex: '^\x01...'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc2865.html#section-3}]
+  - name: protocol.radius.access-accept
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: R, op: size_between, min: 20, max: 4096}, {side: R, op: hex_at, offset: 0, value: "02"}, {side: R, op: size_from_uint_at, offset: 2, width: 2, endian: be}]
+    candidates: [{side: R, regex: '^\x02...'}]
+    sources: [{project: rfc-editor, url: https://www.rfc-editor.org/rfc/rfc2865.html#section-3}]
+  - name: protocol.kafka.request
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: L, op: size_between, min: 12, max: 104857600}, {side: L, op: size_from_uint_at, offset: 0, width: 4, endian: be, adjustment: 4}, {side: L, op: uint_at, offset: 4, width: 2, endian: be, max: 100}, {side: L, op: uint_at, offset: 6, width: 2, endian: be, max: 20}]
+    sources: [{project: apache-kafka, url: https://kafka.apache.org/protocol.html#protocol_common}]
+  - name: protocol.iec104.i-format
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 6, max: 257}, {side: E, op: hex_at, offset: 0, value: "68"}, {side: E, op: size_from_uint_at, offset: 1, width: 1, endian: be, adjustment: 2}, {side: E, op: uint_at, offset: 2, width: 1, endian: be, mask: 1, masked_value: 0}]
+    candidates: [{side: E, regex: '^\x68.'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c}]
+  - name: protocol.iec104.s-format
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 6, max: 6}, {side: E, op: hex_at, offset: 0, value: "680401000000"}]
+    candidates: [{side: E, regex: '^\x68\x04\x01\x00\x00\x00'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c}]
+  - name: protocol.iec104.u-format
+    match: [{field: flow.transport, op: equals_any, values: [tcp]}, {side: E, op: size_between, min: 6, max: 6}, {side: E, op: hex_at, offset: 0, value: "6804"}, {side: E, op: uint_at, offset: 2, width: 1, endian: be, mask: 255, masked_values: [7, 11, 19, 35, 67, 131]}, {side: E, op: hex_at, offset: 3, value: "000000"}]
+    candidates: [{side: E, regex: '^\x68\x04[\x07\x0b\x13\x23\x43\x83]\x00\x00\x00'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c}]
   - name: protocol.smtp
     match: [{side: L, op: prefix_any_ci, values: ["EHLO ", "HELO "]}, {side: R, op: decimal_prefix, digits: 3, separators: " -"}]
     candidates: [{side: L, regex: '^([Ee][Hh][Ll][Oo]|[Hh][Ee][Ll][Oo]) '}, {side: R, regex: '^[0-9]{3}[ -]'}]

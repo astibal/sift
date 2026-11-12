@@ -1,7 +1,7 @@
 # SIFT test matrix
 
 SIFT exposes detailed CTest results instead of reporting each test executable
-as one opaque test. A full run currently reports 52 named tests grouped by
+as one opaque test. A full run currently reports 60 named tests grouped by
 subsystem and protocol family.
 
 ```text

@@ -28,6 +28,16 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | RDP | covered | Exact TPKT framing and X.224 connection message type |
 | Syslog | covered | Valid PRI plus RFC 3164 timestamp or RFC 5424 version/timestamp framing |
 | SOCKS4, SOCKS5 | covered | Common CONNECT/no-auth negotiations |
+| STUN | covered | Binding request, indication, success, and error with cookie and exact length |
+| WireGuard | covered | Handshake, cookie reply, and transport-data message framing |
+| DHCPv4 | covered | BOOTP/DHCP magic cookie at its normative offset |
+| AJP13 | covered | Ping/cpong plus length-checked forward-request and shutdown frames |
+| memcached | covered | ASCII commands and length-checked binary request/response headers |
+| Diameter | covered | Version, exact message length, command code, and request/answer direction |
+| GTP | covered | GTPv1 and GTPv2 version and exact message-length framing |
+| RADIUS | covered | Access-Request/Accept code, direction, and exact packet length |
+| Kafka | covered | Length-checked request header with bounded API key/version |
+| IEC 60870-5-104 | covered | Length-checked I, S, and defined U control formats |
 
 ## Promotion order
 

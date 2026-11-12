@@ -17,22 +17,6 @@ signatures:
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/http2/http2.rs
         note: Validate 24-bit length, known frame type, flags, reserved bit and stream-id constraints.
 
-  - id: protocol.dhcp.cookie
-    transport: udp
-    layer: protocol
-    result: { protocol: dhcpv4 }
-    confidence: certain
-    logic: all
-    enables: dhcp
-    clauses:
-      - side: either
-        offset: 236
-        min_size: 240
-        match: { type: bytes, value_hex: '63 82 53 63' }
-    sources:
-      - project: zeek
-        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dhcp/dpd.sig
-
   - id: protocol.dnp3.magic
     transport: any
     layer: protocol
