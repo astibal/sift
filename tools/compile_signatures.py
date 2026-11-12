@@ -9,7 +9,7 @@ ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
     "line_prefix_within", "domain_suffix_any", "equals_any", "uint_at",
     "size_from_uint_at", "label_sequence_at", "size_between", "ber_sequence",
-    "ber_frame", "candidate_seen",
+    "ber_frame", "quic_long_header", "candidate_seen",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
 ENCRYPTED_NAMESPACES = {
@@ -74,7 +74,7 @@ def main() -> None:
                     clause["op"] not in {
                         "tls_handshake", "decimal_prefix", "uint_at",
                         "size_from_uint_at", "label_sequence_at", "size_between",
-                        "ber_sequence", "ber_frame",
+                        "ber_sequence", "ber_frame", "quic_long_header",
                         "candidate_seen",
                     }):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
@@ -106,6 +106,12 @@ def main() -> None:
             if clause["op"] == "ber_frame" and not any(
                     key in clause for key in ("tag", "tags", "tag_min", "tag_max")):
                 raise SystemExit(f"signature {rule['name']} BER frame has no tag constraint")
+            if clause["op"] == "quic_long_header" and (
+                    not isinstance(clause.get("max_connection_id_length", 20), int) or
+                    clause.get("max_connection_id_length", 20) < 0 or
+                    clause.get("max_connection_id_length", 20) > 255):
+                raise SystemExit(
+                    f"signature {rule['name']} has an invalid QUIC CID limit")
             if clause["op"] == "candidate_seen" and not rule.get("candidates"):
                 raise SystemExit(
                     f"signature {rule['name']} candidate_seen requires candidates")

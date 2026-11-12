@@ -47,6 +47,18 @@ signatures:
   - name: security.tls.server-hello
     match: [{side: R, op: tls_handshake, type: 2}]
     candidates: [{side: R, regex: '^\x16\x03[\x00-\x0f]..\x02'}]
+  - name: security.dtls.client-hello
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 25, max: 65535}, {side: L, op: hex_at, offset: 3, value: "0000"}, {side: L, op: size_from_uint_at, offset: 11, width: 2, endian: be, adjustment: 13}, {side: L, op: uint_at, offset: 14, width: 3, endian: be, min: 1}, {side: L, op: uint_at, offset: 19, width: 3, endian: be, max: 0}, {side: L, op: size_from_uint_at, offset: 22, width: 3, endian: be, adjustment: 25}]
+    candidates: [{side: L, regex: '^\x16\xfe[\xfd\xff].{10}\x01'}]
+    sources: [{project: zeek, url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ssl/dpd.sig}]
+  - name: protocol.quic.v1-initial
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 1200, max: 65535}, {side: L, op: uint_at, offset: 0, width: 1, endian: be, mask: 240, masked_value: 192}, {side: L, op: hex_at, offset: 1, value: "00000001"}, {side: L, op: quic_long_header, has_token_length: true, max_connection_id_length: 20}]
+    candidates: [{side: L, regex: '^[\xc0-\xcf]\x00\x00\x00\x01'}]
+    sources: [{project: zeek, url: https://github.com/OISF/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig}]
+  - name: protocol.quic.v2-initial
+    match: [{field: flow.transport, op: equals_any, values: [udp]}, {side: L, op: size_between, min: 1200, max: 65535}, {side: L, op: uint_at, offset: 0, width: 1, endian: be, mask: 240, masked_value: 208}, {side: L, op: hex_at, offset: 1, value: "6B3343CF"}, {side: L, op: quic_long_header, has_token_length: true, max_connection_id_length: 20}]
+    candidates: [{side: L, regex: '^[\xd0-\xdf]\x6b\x33\x43\xcf'}]
+    sources: [{project: zeek, url: https://github.com/OISF/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig}]
   - name: protocol.ssh.banner-both
     match: [{side: L, op: line_prefix_within, value: "SSH-", limit: 255}, {side: R, op: line_prefix_within, value: "SSH-", limit: 255}]
     candidates: [{side: E, regex: '(^|\x0a)SSH-[12]\.'}]
@@ -193,6 +205,10 @@ signatures:
   - name: enc.tls.protocol.pop3
     match: [{field: flow.tls.alpn, op: equals_any, values: [pop3]}]
     sources: [{project: iana, url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids}]
+  - name: protocol.syslog
+    match: [{side: E, op: candidate_seen}]
+    candidates: [{side: E, regex: '^<(?:[0-9]|[1-9][0-9]|1[0-8][0-9]|19[01])>(?:1 (?:-|[0-9]{4}-[0-9]{2}-[0-9]{2}T)|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-6][0-9] )'}]
+    sources: [{project: wireshark, url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-syslog.c}]
   - name: enc.tls.app.youtube.video
     match: [{field: flow.tls.sni, op: domain_suffix_any, values: [googlevideo.com]}]
   - name: enc.tls.app.youtube

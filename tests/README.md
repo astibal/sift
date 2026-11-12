@@ -11,6 +11,9 @@ Use `reject` for targeted negative vectors. They are required where a short or
 common prefix creates a meaningful false-positive risk; they are intentionally
 optional for unambiguous long binary magics.
 
+Binary cases that require a minimum datagram size may use `pad_to` and the
+optional one-byte `pad_hex` value instead of embedding a large repeated suffix.
+
 ```json
 {
   "name": "example fragmented protocol",

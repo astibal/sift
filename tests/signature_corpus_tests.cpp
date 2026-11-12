@@ -76,9 +76,17 @@ int main(const int argc, char** argv) {
                 }
             }
 
-            const auto payload = chunk.contains("hex")
+            auto payload = chunk.contains("hex")
                 ? decode_hex(chunk.at("hex").get<std::string>())
                 : chunk.value("text", std::string{});
+            if(const auto pad_to = chunk.find("pad_to"); pad_to != chunk.end()) {
+                const auto target = pad_to->get<std::size_t>();
+                const auto padding = decode_hex(chunk.value("pad_hex", std::string{"00"}));
+                if(padding.size() != 1U || target < payload.size()) {
+                    throw std::runtime_error("invalid corpus padding");
+                }
+                payload.resize(target, padding.front());
+            }
             const auto side_text = chunk.value("side", std::string{"L"});
             const auto verdict = runtime.inspect(
                 session, side_text.empty() ? 'L' : side_text.front(), payload, metadata);

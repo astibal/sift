@@ -62,6 +62,61 @@ std::optional<std::uint32_t> integer_at(
     return value;
 }
 
+struct QuicVarint {
+    std::uint64_t value{};
+    std::size_t end{};
+};
+
+std::optional<QuicVarint> quic_varint_at(
+    const std::string_view stream, const std::size_t offset) {
+    if(offset >= stream.size()) return std::nullopt;
+
+    const auto first = static_cast<std::uint8_t>(stream[offset]);
+    const auto width = std::size_t{1} << (first >> 6U);
+    if(width > stream.size() - offset) return std::nullopt;
+
+    std::uint64_t value = first & 0x3fU;
+    for(std::size_t index = 1; index < width; ++index) {
+        value = (value << 8U) | static_cast<std::uint8_t>(stream[offset + index]);
+    }
+    return QuicVarint{value, offset + width};
+}
+
+bool quic_long_header_matches(const std::string_view stream,
+                              const nlohmann::json& clause) {
+    const auto offset = clause.value("offset", 0U);
+    const auto maximum_cid = clause.value("max_connection_id_length", 20U);
+    if(offset > stream.size() || stream.size() - offset < 7U) return false;
+
+    std::size_t cursor = static_cast<std::size_t>(offset) + 5U;
+    const auto destination_length = static_cast<std::uint8_t>(stream[cursor++]);
+    if(destination_length > maximum_cid || destination_length > stream.size() - cursor) {
+        return false;
+    }
+    cursor += destination_length;
+    if(cursor >= stream.size()) return false;
+
+    const auto source_length = static_cast<std::uint8_t>(stream[cursor++]);
+    if(source_length > maximum_cid || source_length > stream.size() - cursor) return false;
+    cursor += source_length;
+
+    if(clause.value("has_token_length", false)) {
+        const auto token_length = quic_varint_at(stream, cursor);
+        if(!token_length.has_value() || token_length->value > stream.size() - token_length->end) {
+            return false;
+        }
+        cursor = token_length->end + static_cast<std::size_t>(token_length->value);
+    }
+
+    const auto payload_length = quic_varint_at(stream, cursor);
+    if(!payload_length.has_value()) return false;
+
+    const auto packet_number_length =
+        (static_cast<std::uint8_t>(stream[offset]) & 0x03U) + 1U;
+    return payload_length->value >= packet_number_length &&
+           payload_length->value <= stream.size() - payload_length->end;
+}
+
 bool has_label_sequence(const std::string_view stream, const std::size_t offset,
                         const std::size_t maximum_label,
                         const std::size_t trailing_bytes) {
@@ -242,6 +297,8 @@ void Runtime::load_signature_pack() {
                 needed = clause.value("min", 0U);
             } else if(op == "ber_sequence" || op == "ber_frame") {
                 needed = clause.value("offset", 0U) + 2U;
+            } else if(op == "quic_long_header") {
+                needed = clause.value("offset", 0U) + 7U;
             } else if(op == "candidate_seen") {
                 needed = 0;
             } else if(op == "decimal_prefix") {
@@ -381,6 +438,7 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
         }
         if(op == "ber_sequence") return ber_sequence_matches(stream, clause);
         if(op == "ber_frame") return ber_frame_matches(stream, clause);
+        if(op == "quic_long_header") return quic_long_header_matches(stream, clause);
         // candidate_seen is valid only on candidate-driven rules. Reaching
         // rule_matches therefore proves that Hyperscan emitted the rule ID.
         if(op == "candidate_seen") return true;

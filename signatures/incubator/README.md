@@ -7,8 +7,10 @@ affect a runtime verdict.
 The initial inventory was imported from the former local
 `smithproxy-signature-pack` research repository. Of its 150 entries, 19 were
 already represented by production rules and were removed during import. The
-remaining 131 candidates retain pinned upstream references. The candidate
-schema is intentionally richer than the current runtime schema so that
+initial 131 candidates retain pinned upstream references until they are
+promoted or rejected; the current count is reported by
+`tools/validate_incubator.py`. The candidate schema is intentionally richer
+than the current runtime schema so that
 transport, confidence, provenance and unfinished matching ideas survive
 refinement.
 

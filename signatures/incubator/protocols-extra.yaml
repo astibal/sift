@@ -21,7 +21,6 @@ x-sources:
   couchbase: &couchbase [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-couchbase.c" }]
   gtp: &gtp [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-gtp.c" }]
   radius: &radius [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-radius.c" }]
-  syslog: &syslog [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-syslog.c" }]
 
 signatures:
   - { id: protocol.stun.binding-request, transport: udp, layer: protocol, result: { protocol: stun, message: binding_request }, confidence: certain, logic: all, clauses: [{ side: left, offset: 0, match: { type: bytes, value_hex: '00 01' } }, { side: left, offset: 0, min_size: 20, match: { type: validator, name: stun.rfc5389-header } }], sources: *stun }
@@ -76,5 +75,3 @@ signatures:
 
   - { id: protocol.radius.access-request, transport: udp, layer: protocol, result: { protocol: radius, message: access_request }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, match: { type: bytes, value_hex: '01' } }, { side: left, offset: 0, min_size: 20, match: { type: validator, name: radius.length-authenticator-attributes } }], sources: *radius }
   - { id: protocol.radius.access-accept, transport: udp, layer: protocol, result: { protocol: radius, message: access_accept }, confidence: high, logic: all, clauses: [{ side: right, offset: 0, match: { type: bytes, value_hex: '02' } }, { side: right, offset: 0, min_size: 20, match: { type: validator, name: radius.length-authenticator-attributes } }], sources: *radius }
-
-  - { id: protocol.syslog.rfc3164-or-5424, transport: any, layer: protocol, result: { protocol: syslog }, confidence: probable, logic: all, clauses: [{ side: either, offset: 0, search_max: 16, match: { type: regex, value: '^<[0-9]{1,3}>([1-9] |[A-Z][a-z]{2} )' } }], sources: *syslog }
