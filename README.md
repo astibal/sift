@@ -11,6 +11,8 @@ silent `std::regex` fallback.
 
 See [the architecture guide](docs/ARCHITECTURE.md) for block diagrams, the
 request lifecycle, component relationships and a source-code map.
+See [the test matrix](docs/TESTING.md) for protocol-family reporting, CTest
+labels and the coverage gate.
 
 The bootstrap engine compiles its cheap pattern gates into one Hyperscan
 database per direction. Each flow owns left and right streaming scanner state;

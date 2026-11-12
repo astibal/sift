@@ -35,13 +35,34 @@ bool contains(const sift::Verdict& verdict, const std::string_view signature) {
     });
 }
 
+std::string family_of(const std::string_view signature) {
+    std::vector<std::string_view> parts;
+    for(std::size_t begin = 0; begin <= signature.size();) {
+        const auto end = signature.find('.', begin);
+        parts.push_back(signature.substr(begin, end - begin));
+        if(end == std::string_view::npos) break;
+        begin = end + 1U;
+    }
+
+    if(parts.size() >= 4U && parts[0] == "enc" &&
+       (parts[2] == "protocol" || parts[2] == "app")) {
+        return std::string(parts[3]);
+    }
+    if(parts.size() >= 2U) return std::string(parts[1]);
+    return std::string(signature);
+}
+
 } // namespace
 
 int main(const int argc, char** argv) {
-    if(argc != 2) {
-        std::cerr << "usage: sift_signature_corpus_tests CORPUS.json\n";
+    if(argc != 2 && argc != 4) {
+        std::cerr << "usage: sift_signature_corpus_tests CORPUS.json "
+                     "[--family NAME]\n";
         return 2;
     }
+    const auto selected_family = argc == 4 && std::string_view(argv[2]) == "--family"
+        ? std::string_view(argv[3]) : std::string_view{};
+    if(argc == 4 && selected_family.empty()) return 2;
 
     std::ifstream input(argv[1]);
     if(!input) {
@@ -55,9 +76,13 @@ int main(const int argc, char** argv) {
     std::unordered_set<std::string> covered_signatures;
 
     for(const auto& test : corpus.at("cases")) {
+        const auto expected = test.value("expect", std::string{});
+        const auto family = expected.empty() ? std::string{"negative"}
+                                             : family_of(expected);
+        if(!selected_family.empty() && selected_family != family) continue;
+
         sift::Runtime runtime;
         const auto session = "corpus-" + std::to_string(index++);
-        const auto expected = test.value("expect", std::string{});
         if(!expected.empty()) covered_signatures.insert(expected);
         bool matched = expected.empty();
         bool rejected_match{};
@@ -110,18 +135,27 @@ int main(const int argc, char** argv) {
     // Make adding a production signature without a replay case impossible.
     // This turns the corpus into an enforced inventory rather than a best-
     // effort collection of examples.
-    sift::Runtime inventory_runtime;
-    const auto inventory = inventory_runtime.status()
-        .at("signatures").at("by_name");
-    for(const auto& [signature, _] : inventory.items()) {
-        if(!covered_signatures.contains(signature)) {
-            std::cerr << "FAIL corpus has no positive case for " << signature << '\n';
-            ++failures;
+    if(!selected_family.empty() && index == 0U) {
+        std::cerr << "FAIL corpus family has no cases: " << selected_family << '\n';
+        ++failures;
+    }
+
+    if(selected_family.empty()) {
+        sift::Runtime inventory_runtime;
+        const auto inventory = inventory_runtime.status()
+            .at("signatures").at("by_name");
+        for(const auto& [signature, _] : inventory.items()) {
+            if(!covered_signatures.contains(signature)) {
+                std::cerr << "FAIL corpus has no positive case for " << signature << '\n';
+                ++failures;
+            }
         }
     }
 
     if(failures == 0) {
-        std::cout << "signature corpus: " << index << " cases, "
+        std::cout << "signature corpus"
+                  << (selected_family.empty() ? "" : " family " + std::string(selected_family))
+                  << ": " << index << " cases, "
                   << covered_signatures.size() << " runtime signatures passed\n";
     }
     return failures == 0 ? 0 : 1;

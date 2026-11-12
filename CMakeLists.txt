@@ -76,29 +76,57 @@ if(BUILD_TESTING)
         target_compile_options(sift_tests PRIVATE --coverage -O0 -g)
         target_link_options(sift_tests PRIVATE --coverage)
     endif()
-    add_test(NAME sift_tests COMMAND sift_tests)
+    set(SIFT_ENGINE_TEST_SECTIONS
+        matching dns-evidence structure-inference runtime-limits flow-lifecycle
+        l7-boundaries source-identity runtime-observability sxbn-envelope
+        lored-client protocol-smoke)
+    foreach(section IN LISTS SIFT_ENGINE_TEST_SECTIONS)
+        add_test(NAME "core.${section}" COMMAND sift_tests --section ${section})
+        set_tests_properties("core.${section}" PROPERTIES LABELS "core")
+    endforeach()
     add_executable(sift_signature_corpus_tests tests/signature_corpus_tests.cpp)
     target_link_libraries(sift_signature_corpus_tests PRIVATE sift_core)
     if(SIFT_COVERAGE)
         target_compile_options(sift_signature_corpus_tests PRIVATE --coverage -O0 -g)
         target_link_options(sift_signature_corpus_tests PRIVATE --coverage)
     endif()
-    add_test(NAME sift_signature_corpus_tests
+    add_test(NAME signatures.inventory
         COMMAND sift_signature_corpus_tests
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/signature_corpus.json)
-    add_test(NAME sift_server_tests
+    set_tests_properties(signatures.inventory PROPERTIES LABELS "signatures;inventory")
+
+    # Keep each protocol family visible in CI/CTest output. The inventory test
+    # above ensures that a newly added runtime signature still requires a replay.
+    set(SIFT_SIGNATURE_FAMILIES
+        http1 http2 http3 dns doh quic tls dtls ssh ftp socks4 socks5 smb1 smb2
+        smb3 smb postgresql mysql redis bgp ldap snmp kerberos ntp rdp rfb sip
+        bittorrent amqp ajp13 memcached smtp imap pop3 syslog youtube negative)
+    foreach(family IN LISTS SIFT_SIGNATURE_FAMILIES)
+        add_test(NAME "signatures.${family}"
+            COMMAND sift_signature_corpus_tests
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/signature_corpus.json
+                --family ${family})
+        set_tests_properties("signatures.${family}" PROPERTIES
+            LABELS "signatures;protocol-family")
+    endforeach()
+    add_test(NAME integration.http-server
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/server_tests.py
             $<TARGET_FILE:siftd>)
-    add_test(NAME sift_incubator_validate
+    set_tests_properties(integration.http-server PROPERTIES LABELS "integration;server")
+    add_test(NAME signatures.incubator-validation
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_incubator.py
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/core.yaml
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/protocols-extra.yaml
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/services.yaml
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/incubator/content.yaml)
-    add_test(NAME sift_signature_policy_tests
+    set_tests_properties(signatures.incubator-validation PROPERTIES
+        LABELS "signatures;policy")
+    add_test(NAME policy.encrypted-signature-namespaces
         COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/signature_policy_tests.py
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/compile_signatures.py)
+    set_tests_properties(policy.encrypted-signature-namespaces PROPERTIES
+        LABELS "policy;signatures")
 
     if(SIFT_COVERAGE)
         add_custom_target(coverage

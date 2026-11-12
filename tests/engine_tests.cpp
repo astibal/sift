@@ -9,13 +9,24 @@
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
+#include <string_view>
 #include <thread>
 
 namespace {
 int failures{};
+std::string_view selected_section;
+std::string_view current_section;
+bool selected_section_seen{};
+
+void section(const std::string_view name) {
+    current_section = name;
+    selected_section_seen = selected_section_seen || selected_section == name;
+}
+
 void check(bool condition, const char* message) {
+    if(!selected_section.empty() && selected_section != current_section) return;
     if (!condition) {
-        std::cerr << "FAIL: " << message << '\n';
+        std::cerr << "FAIL [" << current_section << "]: " << message << '\n';
         ++failures;
     }
 }
@@ -63,12 +74,21 @@ std::string sample_tlv() {
 }
 }
 
-int main() {
+int main(const int argc, char** argv) {
+    if(argc == 3 && std::string_view(argv[1]) == "--section") {
+        selected_section = argv[2];
+    } else if(argc != 1) {
+        std::cerr << "usage: sift_tests [--section NAME]\n";
+        return 2;
+    }
+
+    section("matching");
     check(sift::matching::decode_hex("0").empty(),
           "odd-length hexadecimal input was accepted");
     check(sift::matching::decode_hex("zz").empty(),
           "non-hexadecimal input was accepted");
 
+    section("dns-evidence");
     sift::DnsEvidenceCache dns_evidence;
     const sift::SourceIdentity dns_source{"tenant-a", "edge-a", false};
     nlohmann::json dns_reply;
@@ -136,6 +156,7 @@ int main() {
               dns_status.at("hits") == 1 && dns_status.at("rejected") == 4,
           "DNS evidence statistics are wrong");
 
+    section("structure-inference");
     const auto tlv_payload = sample_tlv();
     const auto tlv = sift::structure::infer_tlv_candidates(tlv_payload);
     check(!tlv.empty(), "TLV structure was not inferred");
@@ -162,6 +183,7 @@ int main() {
     check(structure_runtime.status().at("structure").at("published") == 0,
           "runtime reports published structure candidates");
 
+    section("runtime-limits");
     sift::Runtime bounded_runtime;
     const auto required_evidence = bounded_runtime.config().at(
         "required_evidence_bytes").get<std::size_t>();
@@ -245,6 +267,7 @@ int main() {
     check(bounded_status.at("limits").at("metadata_values_dropped") >= 1,
           "metadata value limit was not enforced");
 
+    section("flow-lifecycle");
     sift::RuntimeConfig expiring_config;
     expiring_config.min_idle_ttl_seconds = 0;
     expiring_config.max_idle_ttl_seconds = 0;
@@ -289,6 +312,7 @@ int main() {
     check(tombstone_runtime.status().at("flows").at("tombstones") == 2,
           "tombstone hard cap was not enforced");
 
+    section("l7-boundaries");
     sift::Runtime probe_limit_runtime;
     sift::InspectionMetadata first_layer;
     first_layer.payload_layer = "layer-one";
@@ -353,6 +377,7 @@ int main() {
     check(encoding_runtime.inspect("encoding", 'L', second_l7, continuation).matches.empty(),
           "L7 structure state leaked between encodings");
 
+    section("source-identity");
     const auto declared_identity = sift::resolve_identity(
         nlohmann::json{{"identity", {{"tenant", "acme"}, {"instance", "edge-a"}}},
                        {"source", "legacy"}},
@@ -399,6 +424,7 @@ int main() {
     check(fallback_runtime.status().at("identity").at("ip_fallback_requests") == 1,
           "peer IP fallback request was not counted");
 
+    section("runtime-observability");
     sift::Runtime runtime;
     auto first = runtime.inspect("flow-1", 'L', "PRI * HTTP/2.0\r\n");
     check(first.matches.empty(), "fragment must remain pending");
@@ -439,6 +465,7 @@ int main() {
     check(closed_stats.at("flows").at("active") == 0, "closed flow retained");
     check(closed_stats.at("flows").at("closed") == 1, "closed flow not counted");
 
+    section("sxbn-envelope");
     const std::string metadata = R"({"action":"connection-content","id":"x","details":{"info":{"session":"x","side":"L","payload_length":8}}})";
     char prefix[26]{};
     std::snprintf(prefix, sizeof(prefix), "SXBN001:%08X:%08X",
@@ -474,6 +501,7 @@ int main() {
     rejects_sxbn("SXBN001:00000001:00000000{", "invalid SXBN JSON metadata");
     rejects_sxbn("SXBN001:00000002:00000000[]", "SXBN metadata must be a JSON object");
 
+    section("lored-client");
     sift::LoredClient disabled_lore({});
     bool lore_attempted{};
     bool lore_succeeded{};
@@ -502,6 +530,7 @@ int main() {
     check(optional_lore.status().at("skipped") == 1,
           "LoreD skipped query was not counted");
 
+    section("protocol-smoke");
     const auto serialized = sift::verdict_json(runtime.inspect(
         "verdict-json", 'L', "GET / HTTP/1.1\r\n"));
     check(serialized.at("engine") == "siftd" &&
@@ -589,5 +618,9 @@ int main() {
         {"flow.http3.path", {"/index.html"}}}};
     check(has_match(runtime.inspect("requestor-h3", 'L', "payload", http3_metadata),
                     "protocol.http3"), "requestor HTTP/3 confirmation did not match");
+    if(!selected_section.empty() && !selected_section_seen) {
+        std::cerr << "unknown test section: " << selected_section << '\n';
+        return 2;
+    }
     return failures == 0 ? 0 : 1;
 }
