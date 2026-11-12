@@ -8,6 +8,7 @@
 
 namespace sift::structure {
 
+/** One plausible repeated length-framed layout inferred from opaque bytes. */
 struct TlvMatch {
     std::string signature;
     double confidence{};
@@ -17,6 +18,7 @@ struct TlvMatch {
     bool needs_more{};
 };
 
+/** Safety bounds and minimum evidence required by the structural probe. */
 struct TlvOptions {
     std::size_t max_magic_bytes{32};
     std::size_t max_probe_bytes{64U * 1024U};

@@ -15,6 +15,7 @@
 
 namespace sift {
 
+/** Controls whether external LoreD enrichment is skipped, best-effort, or fatal. */
 enum class LoredMode { disabled, optional, required };
 
 struct LoredConfig {
@@ -31,15 +32,25 @@ struct LoredRequest {
     bool include_url{};
 };
 
+/**
+ * Optional external protocol enrichment with per-flow and shared caches.
+ * Network calls are performed outside the mutex so unrelated flows can
+ * continue while LoreD responds.
+ */
 class LoredClient {
 public:
     explicit LoredClient(LoredConfig config);
 
     [[nodiscard]] bool enabled() const noexcept;
     [[nodiscard]] bool required() const noexcept;
+    /**
+     * Merge current evidence, query LoreD when useful, and return its reply.
+     * attempted/succeeded distinguish a cache or policy skip from a failed call.
+     */
     [[nodiscard]] nlohmann::json enrich(
         const FlowKey& key, const InspectionMetadata& metadata, const Verdict& verdict,
         const LoredRequest& request, bool& attempted, bool& succeeded);
+    /** Forget per-flow enrichment state after the capture reports flow close. */
     void close(const FlowKey& key);
     [[nodiscard]] nlohmann::json status() const;
 

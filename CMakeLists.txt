@@ -38,6 +38,7 @@ add_library(sift_core
     src/engine.cpp
     src/identity.cpp
     src/lored.cpp
+    src/matching.cpp
     src/structure.cpp
     src/sxbn.cpp
 )
@@ -69,6 +70,7 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     add_executable(sift_tests tests/engine_tests.cpp)
+    target_include_directories(sift_tests PRIVATE src)
     target_link_libraries(sift_tests PRIVATE sift_core)
     if(SIFT_COVERAGE)
         target_compile_options(sift_tests PRIVATE --coverage -O0 -g)
@@ -108,6 +110,7 @@ if(BUILD_TESTING)
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/engine.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/identity.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/lored.cpp.gcda
+                --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/matching.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/structure.cpp.gcda
                 --object ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/sift_core.dir/src/sxbn.cpp.gcda
             DEPENDS sift_tests sift_signature_corpus_tests siftd

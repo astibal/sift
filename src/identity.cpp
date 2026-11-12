@@ -49,6 +49,7 @@ SourceIdentity resolve_identity(const nlohmann::json& event,
         result.instance = nonempty_string(event, "source");
     }
 
+    // Peer IP is a compatibility fallback, not an asserted capture identity.
     if(result.instance.empty()) {
         result.instance = peer_ip.empty() ? "unknown" : std::string(peer_ip);
         result.ip_fallback = true;

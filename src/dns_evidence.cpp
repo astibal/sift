@@ -42,6 +42,7 @@ bool string_array(const nlohmann::json& object, const char* name,
 
 std::string DnsEvidenceCache::key(const SourceIdentity& source, const std::string& client,
                                   const std::string& destination) {
+    // Separators prevent ambiguous concatenations across identity components.
     return source.tenant + '\n' + source.instance + '\n' +
            (source.ip_fallback ? "fallback\n" : "declared\n") + client + '\n' + destination;
 }
@@ -96,6 +97,7 @@ bool DnsEvidenceCache::observe(const SourceIdentity& source,
     const auto expires = now + std::chrono::seconds(ttl);
 
     std::scoped_lock guard(lock_);
+    // Expire first; fresh evidence must never grow the cache without bound.
     sweep_locked(now);
     std::size_t additions{};
     for(const auto& address : addresses) {

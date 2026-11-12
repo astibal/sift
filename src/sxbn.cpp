@@ -7,6 +7,7 @@ namespace sift::sxbn {
 
 bool decode(const std::string& body, nlohmann::json& event,
             std::string& payload, std::string& error) {
+    // Validate declared lengths before slicing so truncated envelopes fail closed.
     constexpr std::size_t prefix_size = 25;
     if (body.size() < prefix_size || !std::string_view(body).starts_with(magic)) {
         error = "missing SXBN001 envelope";

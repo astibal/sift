@@ -25,6 +25,7 @@ namespace sift {
 namespace {
 
 struct RequestState final : lmh::ConnectionState {
+    // The upload callback accumulates the body under the configured size limit.
     explicit RequestState(lmh::Controller& controller) : ConnectionState(controller) {}
     bool too_large{};
 };
@@ -77,6 +78,7 @@ bool loopback_peer(const std::string_view address) {
 }
 
 std::optional<LoredRequest> lored_request(const nlohmann::json& event) {
+    // External enrichment is explicit per request, even when configured.
     const auto requirements = event.find("requirements");
     if(requirements == event.end() || !requirements->is_object()) return std::nullopt;
 
@@ -102,6 +104,110 @@ std::string first_metadata_value(
     return {};
 }
 
+bool decode_event(const std::string& body, nlohmann::json& event,
+                  std::string& payload, std::string& error) {
+    // SXBN preserves arbitrary payload bytes; JSON covers metadata-only events.
+    if(std::string_view(body).starts_with(sxbn::magic)) {
+        return sxbn::decode(body, event, payload, error);
+    }
+
+    event = nlohmann::json::parse(body, nullptr, false);
+    if(event.is_discarded() || !event.is_object()) {
+        error = "invalid JSON";
+        return false;
+    }
+    return true;
+}
+
+void append_l7_payload_ranges(const nlohmann::json& info,
+                              InspectionMetadata& metadata) {
+    const auto starts = info.find("L7_payload_start");
+    const auto ends = info.find("L7_payload_end");
+    const auto encodings = info.find("L7_encoding");
+    if(starts == info.end() || ends == info.end() || !starts->is_array() ||
+       !ends->is_array() || starts->size() != ends->size()) {
+        return;
+    }
+
+    // A malformed item invalidates the entire set; a partial set would make
+    // the claimed L7 boundary untrustworthy.
+    metadata.l7_payload_known = true;
+    for(std::size_t index = 0; index < starts->size(); ++index) {
+        if(!(*starts)[index].is_number_integer() ||
+           !(*ends)[index].is_number_integer()) {
+            metadata.l7_payload_known = false;
+            metadata.l7_payload_ranges.clear();
+            return;
+        }
+
+        const auto begin = (*starts)[index].get<std::int64_t>();
+        const auto end = (*ends)[index].get<std::int64_t>();
+        if((begin == -1 && end == -1) || begin < 0 || end < begin) {
+            metadata.l7_payload_known = false;
+            metadata.l7_payload_ranges.clear();
+            return;
+        }
+        if(begin == end) continue;
+
+        std::string encoding;
+        if(encodings != info.end() && encodings->is_array() &&
+           index < encodings->size() && (*encodings)[index].is_string()) {
+            encoding = (*encodings)[index].get<std::string>();
+        }
+
+        metadata.l7_payload_ranges.push_back({
+            static_cast<std::size_t>(begin), static_cast<std::size_t>(end),
+            std::move(encoding)});
+    }
+}
+
+void append_flow_fields(const nlohmann::json& info,
+                        InspectionMetadata& metadata) {
+    // Only flow.* keys are evidence; sibling keys control request processing.
+    for(auto item = info.begin(); item != info.end(); ++item) {
+        if(!item.key().starts_with("flow.")) continue;
+
+        auto& values = metadata.fields[item.key()];
+        if(item->is_string()) {
+            values.push_back(item->get<std::string>());
+        } else if(item->is_boolean()) {
+            values.push_back(item->get<bool>() ? "true" : "false");
+        } else if(item->is_array()) {
+            for(const auto& value : *item) {
+                if(value.is_string()) {
+                    values.push_back(value.get<std::string>());
+                } else if(value.is_boolean()) {
+                    values.push_back(value.get<bool>() ? "true" : "false");
+                }
+            }
+        }
+    }
+}
+
+InspectionMetadata inspection_metadata(const nlohmann::json& info) {
+    InspectionMetadata metadata;
+    metadata.payload_layer = string_field(info, "payload_layer");
+    if(metadata.payload_layer.empty()) metadata.payload_layer = "tcp";
+    metadata.payload_stream = identifier_field(info, "payload_stream");
+
+    append_l7_payload_ranges(info, metadata);
+
+    if(metadata.payload_stream.empty()) {
+        for(const auto* field : {
+                "flow.http3.stream_id", "flow.http2.stream_id"}) {
+            const auto value = identifier_field(info, field);
+            if(value.empty()) continue;
+
+            metadata.payload_stream = value;
+            break;
+        }
+    }
+
+    append_flow_fields(info, metadata);
+    return metadata;
+}
+
+/** HTTP boundary translating webhook events into runtime operations. */
 class Controller final : public lmh::Controller {
 public:
     Controller(const ServerConfig& config, Runtime& runtime)
@@ -245,20 +351,11 @@ private:
         const auto started = std::chrono::steady_clock::now();
         nlohmann::json event;
         std::string payload;
-        if (std::string_view(body).starts_with(sxbn::magic)) {
-            std::string error;
-            if (!sxbn::decode(body, event, payload, error)) {
-                ++decode_errors_;
-                status = 400;
-                return {{"error", error}};
-            }
-        } else {
-            event = nlohmann::json::parse(body, nullptr, false);
-            if (event.is_discarded() || !event.is_object()) {
-                ++decode_errors_;
-                status = 400;
-                return {{"error", "invalid JSON"}};
-            }
+        std::string decode_error;
+        if(!decode_event(body, event, payload, decode_error)) {
+            ++decode_errors_;
+            status = 400;
+            return {{"error", decode_error}};
         }
 
         const auto action = event.value("action", "");
@@ -334,76 +431,7 @@ private:
             session = "anonymous-" + std::to_string(++anonymous_sequence_);
         }
 
-        InspectionMetadata metadata;
-        metadata.payload_layer = string_field(info, "payload_layer");
-        if(metadata.payload_layer.empty()) metadata.payload_layer = "tcp";
-        metadata.payload_stream = identifier_field(info, "payload_stream");
-
-        const auto starts = info.find("L7_payload_start");
-        const auto ends = info.find("L7_payload_end");
-        const auto encodings = info.find("L7_encoding");
-        if(starts != info.end() && ends != info.end() &&
-           starts->is_array() && ends->is_array() && starts->size() == ends->size()) {
-            metadata.l7_payload_known = true;
-
-            for(std::size_t index = 0; index < starts->size(); ++index) {
-                if(!(*starts)[index].is_number_integer() ||
-                   !(*ends)[index].is_number_integer()) {
-                    metadata.l7_payload_known = false;
-                    metadata.l7_payload_ranges.clear();
-                    break;
-                }
-
-                const auto begin = (*starts)[index].get<std::int64_t>();
-                const auto end = (*ends)[index].get<std::int64_t>();
-                if(begin == -1 && end == -1) {
-                    metadata.l7_payload_known = false;
-                    metadata.l7_payload_ranges.clear();
-                    break;
-                }
-                if(begin < 0 || end < begin) {
-                    metadata.l7_payload_known = false;
-                    metadata.l7_payload_ranges.clear();
-                    break;
-                }
-                if(begin == end) continue;
-
-                std::string encoding;
-                if(encodings != info.end() && encodings->is_array() &&
-                   index < encodings->size() && (*encodings)[index].is_string()) {
-                    encoding = (*encodings)[index].get<std::string>();
-                }
-
-                metadata.l7_payload_ranges.push_back({
-                    static_cast<std::size_t>(begin),
-                    static_cast<std::size_t>(end),
-                    std::move(encoding)});
-            }
-        }
-
-        if(metadata.payload_stream.empty()) {
-            for(const auto* field : {"flow.http3.stream_id", "flow.http2.stream_id"}) {
-                const auto value = identifier_field(info, field);
-
-                if(!value.empty()) {
-                    metadata.payload_stream = value;
-                    break;
-                }
-            }
-        }
-
-        for (auto item = info.begin(); item != info.end(); ++item) {
-            if (!item.key().starts_with("flow.")) continue;
-            auto& values = metadata.fields[item.key()];
-            if (item->is_string()) values.push_back(item->get<std::string>());
-            else if (item->is_boolean()) values.push_back(item->get<bool>() ? "true" : "false");
-            else if (item->is_array()) {
-                for (const auto& value : *item) {
-                    if (value.is_string()) values.push_back(value.get<std::string>());
-                    else if (value.is_boolean()) values.push_back(value.get<bool>() ? "true" : "false");
-                }
-            }
-        }
+        auto metadata = inspection_metadata(info);
 
         nlohmann::json dns_evidence = {{"status", "not-applicable"}};
         const auto source_address = first_metadata_value(metadata, {
@@ -482,6 +510,7 @@ private:
 } // namespace
 
 int run_server(const ServerConfig& config, Runtime& runtime, std::atomic_bool& stop) {
+    // Runtime ownership stays with main; this adapter owns HTTP and LoreD state.
     lmh::WebServer server(config.port);
     server.options().bind_address = config.bind;
     server.options().handler_should_terminate = [&stop] { return stop.load(); };

@@ -9,6 +9,9 @@ accepts bidirectional stream chunks, keeps per-flow state and returns a verdict.
 Sift requires Intel Hyperscan (`libhyperscan-dev` on Debian/Ubuntu); there is no
 silent `std::regex` fallback.
 
+See [the architecture guide](docs/ARCHITECTURE.md) for block diagrams, the
+request lifecycle, component relationships and a source-code map.
+
 The bootstrap engine compiles its cheap pattern gates into one Hyperscan
 database per direction. Each flow owns left and right streaming scanner state;
 Hyperscan emits candidate rule IDs and the stateful matchers perform the final

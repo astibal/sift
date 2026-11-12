@@ -4,6 +4,8 @@
 #include <sift/structure.hpp>
 #include <sift/sxbn.hpp>
 
+#include "matching.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
@@ -62,6 +64,11 @@ std::string sample_tlv() {
 }
 
 int main() {
+    check(sift::matching::decode_hex("0").empty(),
+          "odd-length hexadecimal input was accepted");
+    check(sift::matching::decode_hex("zz").empty(),
+          "non-hexadecimal input was accepted");
+
     sift::DnsEvidenceCache dns_evidence;
     const sift::SourceIdentity dns_source{"tenant-a", "edge-a", false};
     nlohmann::json dns_reply;

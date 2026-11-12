@@ -51,6 +51,7 @@ std::optional<int> integer_value(
 
 std::string protocol_hint(const InspectionMetadata& metadata,
                           const Verdict& verdict) {
+    // Prefer explicit transport metadata; confirmed matches remain a fallback.
     for(const auto name : {"flow.http3", "flow.http2", "flow.http1"}) {
         const auto value = first_value(metadata, {name});
         if(value == "true") return std::string(name).substr(5);
@@ -67,6 +68,7 @@ std::string protocol_hint(const InspectionMetadata& metadata,
 }
 
 struct CurlHandle {
+    // RAII keeps error and early-return paths leak-free.
     CURL* value{curl_easy_init()};
     ~CurlHandle() { if(value != nullptr) curl_easy_cleanup(value); }
 };
@@ -163,6 +165,8 @@ nlohmann::json LoredClient::enrich(
     Verdict accumulated_verdict;
     std::shared_ptr<FlowState> flow;
     {
+        // Snapshot accumulated flow evidence, then release the lock before any
+        // potentially slow network operation.
         std::scoped_lock guard(lock_);
         auto& slot = flows_[key];
         if(!slot) slot = std::make_shared<FlowState>();

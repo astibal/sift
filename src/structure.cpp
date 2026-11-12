@@ -15,6 +15,7 @@ enum class ByteOrder { little, big };
 enum class LengthMode { value, record };
 
 struct Layout {
+    // Candidate wire shape: optional prefix plus repeated length fields.
     std::size_t offset{};
     std::size_t field_width{};
     std::size_t field_count{};
@@ -24,6 +25,7 @@ struct Layout {
 };
 
 struct Evaluation {
+    // Ranking evidence stays separate so ambiguity remains visible to callers.
     Layout layout;
     double score{};
     std::size_t records{};
@@ -175,6 +177,7 @@ bool better(const Evaluation& candidate, const Evaluation& current) {
 
 std::vector<TlvMatch> infer_tlv_candidates(std::string_view bytes,
                                            const TlvOptions& options) {
+    // Structural inference proposes framing; it never overrides exact matches.
     if(bytes.empty() || options.min_records < 2) return {};
 
     if(bytes.size() > options.max_probe_bytes) {

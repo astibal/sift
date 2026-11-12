@@ -13,13 +13,21 @@
 
 namespace sift {
 
+/**
+ * Bounded forward-DNS evidence cache scoped by capture-source identity.
+ * It correlates a later destination IP with names previously observed for the
+ * same tenant, capture instance, and client without leaking across sources.
+ */
 class DnsEvidenceCache {
 public:
+    /** Validate and store a DNS observation, respecting TTL and capacity limits. */
     bool observe(const SourceIdentity& source, const nlohmann::json& observation,
                  nlohmann::json& reply, std::string& error);
+    /** Return unexpired hostnames associated with a client/destination pair. */
     [[nodiscard]] nlohmann::json lookup(const SourceIdentity& source,
                                         const std::string& client_address,
                                         const std::string& destination_address);
+    /** Return cache size and lifetime counters after removing expired entries. */
     [[nodiscard]] nlohmann::json status();
 
 private:

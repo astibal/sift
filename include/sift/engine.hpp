@@ -18,6 +18,7 @@
 
 namespace sift {
 
+/** Resource and retention limits for the stateful classifier. */
 struct RuntimeConfig {
     std::size_t evidence_bytes_per_side{64U * 1024U};
     std::size_t max_flows{10000};
@@ -30,6 +31,7 @@ struct RuntimeConfig {
     std::size_t max_structure_probes_per_flow{8};
 };
 
+/** One signature match, including the byte range and evidence layer. */
 struct Match {
     std::string signature;
     std::size_t begin{};
@@ -39,11 +41,16 @@ struct Match {
     double confidence{1.0};
 };
 
+/** Aggregate decision returned for one payload update. */
 struct Verdict {
     std::string action{"accept"};
     std::vector<Match> matches;
 };
 
+/**
+ * Observations supplied by the capture/inspection layer alongside raw bytes.
+ * Field names are normalized by the server before they reach the runtime.
+ */
 struct InspectionMetadata {
     struct L7PayloadRange {
         std::size_t begin{};
@@ -58,6 +65,12 @@ struct InspectionMetadata {
     bool l7_payload_known{};
 };
 
+/**
+ * Thread-safe, stateful signature runtime.
+ *
+ * Runtime retains bounded bidirectional evidence per FlowKey, uses Hyperscan
+ * as a candidate prefilter, and confirms every result with exact matchers.
+ */
 class Runtime {
 public:
     explicit Runtime(RuntimeConfig config = {});
@@ -65,21 +78,30 @@ public:
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
 
+    /** Append evidence for one side of a flow and return newly confirmed matches. */
     [[nodiscard]] Verdict inspect(const FlowKey& key, char side,
                                   std::string_view payload,
                                   const InspectionMetadata& metadata = {});
+    /** Compatibility overload using the default source identity. */
     [[nodiscard]] Verdict inspect(std::string_view session, char side,
                                   std::string_view payload,
                                   const InspectionMetadata& metadata = {});
+    /** Explicitly create flow state before its first payload arrives. */
     void start(const FlowKey& key);
+    /** Record end-to-end request latency measured by the server adapter. */
     void record_total_delay(std::chrono::nanoseconds elapsed);
+    /** Release all retained state for a completed flow. */
     void close(const FlowKey& key);
     void close(std::string_view session);
+    /** Return a coherent operational snapshot, including counters and limits. */
     [[nodiscard]] nlohmann::json status();
     [[nodiscard]] nlohmann::json config() const;
+    /** Validate and atomically apply a partial runtime configuration update. */
     bool configure(const nlohmann::json& update, std::string& error);
 
 private:
+    // Compiled policy. Rules hold exact clauses; scan patterns are only the
+    // cheap Hyperscan gates that decide which rules deserve exact evaluation.
     struct Rule {
         std::string name;
         nlohmann::json clauses;
@@ -90,6 +112,8 @@ private:
         unsigned rule{};
         char side{'E'};
     };
+
+    // Bounded state retained for one bidirectional flow.
     struct Flow {
         struct StructureProbe {
             std::string bytes;
@@ -121,6 +145,7 @@ private:
     [[nodiscard]] hs_database_t* compile_database(char side) const;
     [[nodiscard]] bool rule_matches(const Rule& rule, const Flow& flow) const;
 
+    // Policy and active flow state.
     mutable std::mutex lock_;
     std::vector<Rule> rules_;
     std::vector<ScanPattern> scan_patterns_;
@@ -129,6 +154,8 @@ private:
     RuntimeConfig config_;
     std::size_t required_evidence_bytes_{};
     std::chrono::steady_clock::time_point next_sweep_{std::chrono::steady_clock::now()};
+
+    // Identity and scanner resources.
     std::unordered_set<std::string> tenants_seen_;
     std::unordered_set<std::string> instances_seen_;
     std::uint64_t ip_fallback_requests_{};
@@ -136,6 +163,9 @@ private:
     hs_database_t* right_database_{};
     hs_scratch_t* scratch_{};
     const std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
+
+    // Diagnostics counters. They are protected by lock_ together with the
+    // flow state so status() always returns a coherent snapshot.
     std::unordered_map<std::string, std::uint64_t> signature_matches_;
     std::uint64_t flows_seen_{};
     std::uint64_t flows_closed_{};

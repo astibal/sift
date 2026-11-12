@@ -1,251 +1,24 @@
 #include <sift/engine.hpp>
 #include <sift/structure.hpp>
 
+#include "matching.hpp"
+
 #include <algorithm>
-#include <array>
-#include <cctype>
 #include <cmath>
 #include <hs/hs.h>
-#include <numeric>
-#include <optional>
 #include <stdexcept>
-#include <vector>
 
 #include <compiled_signatures.hpp>
 
 namespace sift {
 namespace {
 
-std::string normalized_hostname(std::string_view hostname) {
-    while (!hostname.empty() && hostname.back() == '.') hostname.remove_suffix(1);
-    std::string result;
-    result.reserve(hostname.size());
-    for (const auto ch : hostname) {
-        result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-    }
-    return result;
-}
-
-bool starts_with_ci(const std::string_view stream, const std::string_view prefix) {
-    if(stream.size() < prefix.size()) return false;
-
-    return std::equal(
-        prefix.begin(), prefix.end(), stream.begin(), [](const char left, const char right) {
-            return std::tolower(static_cast<unsigned char>(left)) ==
-                   std::tolower(static_cast<unsigned char>(right));
-        });
-}
-
-bool domain_is(const std::string_view hostname, const std::string_view domain) {
-    return hostname == domain ||
-           (hostname.size() > domain.size() && hostname.ends_with(domain) &&
-            hostname[hostname.size() - domain.size() - 1] == '.');
-}
-
-bool at(const std::string_view value, const std::size_t offset,
-        const std::string_view bytes) {
-    return value.size() >= offset + bytes.size() && value.substr(offset, bytes.size()) == bytes;
-}
-
-std::optional<std::uint32_t> integer_at(
-    const std::string_view stream, const std::size_t offset,
-    const std::size_t width, const bool little_endian) {
-    if(width == 0 || width > 4 || offset > stream.size() ||
-       width > stream.size() - offset) return std::nullopt;
-
-    std::uint32_t value{};
-    for(std::size_t index = 0; index < width; ++index) {
-        const auto source = little_endian ? width - index - 1U : index;
-        value = (value << 8U) |
-            static_cast<unsigned char>(stream[offset + source]);
-    }
-    return value;
-}
-
-struct QuicVarint {
-    std::uint64_t value{};
-    std::size_t end{};
-};
-
-std::optional<QuicVarint> quic_varint_at(
-    const std::string_view stream, const std::size_t offset) {
-    if(offset >= stream.size()) return std::nullopt;
-
-    const auto first = static_cast<std::uint8_t>(stream[offset]);
-    const auto width = std::size_t{1} << (first >> 6U);
-    if(width > stream.size() - offset) return std::nullopt;
-
-    std::uint64_t value = first & 0x3fU;
-    for(std::size_t index = 1; index < width; ++index) {
-        value = (value << 8U) | static_cast<std::uint8_t>(stream[offset + index]);
-    }
-    return QuicVarint{value, offset + width};
-}
-
-bool quic_long_header_matches(const std::string_view stream,
-                              const nlohmann::json& clause) {
-    const auto offset = clause.value("offset", 0U);
-    const auto maximum_cid = clause.value("max_connection_id_length", 20U);
-    if(offset > stream.size() || stream.size() - offset < 7U) return false;
-
-    std::size_t cursor = static_cast<std::size_t>(offset) + 5U;
-    const auto destination_length = static_cast<std::uint8_t>(stream[cursor++]);
-    if(destination_length > maximum_cid || destination_length > stream.size() - cursor) {
-        return false;
-    }
-    cursor += destination_length;
-    if(cursor >= stream.size()) return false;
-
-    const auto source_length = static_cast<std::uint8_t>(stream[cursor++]);
-    if(source_length > maximum_cid || source_length > stream.size() - cursor) return false;
-    cursor += source_length;
-
-    if(clause.value("has_token_length", false)) {
-        const auto token_length = quic_varint_at(stream, cursor);
-        if(!token_length.has_value() || token_length->value > stream.size() - token_length->end) {
-            return false;
-        }
-        cursor = token_length->end + static_cast<std::size_t>(token_length->value);
-    }
-
-    const auto payload_length = quic_varint_at(stream, cursor);
-    if(!payload_length.has_value()) return false;
-
-    const auto packet_number_length =
-        (static_cast<std::uint8_t>(stream[offset]) & 0x03U) + 1U;
-    return payload_length->value >= packet_number_length &&
-           payload_length->value <= stream.size() - payload_length->end;
-}
-
-bool has_label_sequence(const std::string_view stream, const std::size_t offset,
-                        const std::size_t maximum_label,
-                        const std::size_t trailing_bytes) {
-    if(offset >= stream.size()) return false;
-
-    auto cursor = offset;
-    bool saw_label{};
-    while(cursor < stream.size()) {
-        const auto length = static_cast<unsigned char>(stream[cursor++]);
-        if(length == 0) return saw_label && stream.size() - cursor >= trailing_bytes;
-        if(length > maximum_label || length > stream.size() - cursor) return false;
-
-        saw_label = true;
-        cursor += length;
-    }
-    return false;
-}
-
-struct BerElement {
-    std::uint8_t tag{};
-    std::size_t value_offset{};
-    std::size_t end{};
-};
-
-std::optional<BerElement> ber_element_at(
-    const std::string_view stream, const std::size_t offset) {
-    if(offset + 2U > stream.size()) return std::nullopt;
-
-    const auto tag = static_cast<std::uint8_t>(stream[offset]);
-    const auto first_length = static_cast<std::uint8_t>(stream[offset + 1U]);
-    std::size_t cursor = offset + 2U;
-    std::size_t length{};
-
-    if((first_length & 0x80U) == 0) {
-        length = first_length;
-    } else {
-        const auto octets = static_cast<std::size_t>(first_length & 0x7fU);
-        if(octets == 0 || octets > 4 || cursor + octets > stream.size()) {
-            return std::nullopt;
-        }
-        if(static_cast<std::uint8_t>(stream[cursor]) == 0) return std::nullopt;
-
-        for(std::size_t index = 0; index < octets; ++index) {
-            length = (length << 8U) |
-                static_cast<std::uint8_t>(stream[cursor++]);
-        }
-        if(length < 128U) return std::nullopt;
-    }
-
-    if(length > stream.size() - cursor) return std::nullopt;
-    return BerElement{tag, cursor, cursor + length};
-}
-
-bool ber_sequence_matches(const std::string_view stream,
-                          const nlohmann::json& clause) {
-    const auto offset = clause.value("offset", 0U);
-    const auto outer = ber_element_at(stream, offset);
-    if(!outer.has_value() || outer->tag != clause.value("tag", 0x30U)) return false;
-    if(clause.value("exact_frame", true) && outer->end != stream.size()) return false;
-
-    auto cursor = outer->value_offset;
-    for(const auto& expected : clause.at("children")) {
-        const auto child = ber_element_at(stream, cursor);
-        if(!child.has_value() || child->end > outer->end) return false;
-
-        const auto minimum = expected.value("tag_min", expected.value("tag", 0U));
-        const auto maximum = expected.value("tag_max", expected.value("tag", 255U));
-        if(child->tag < minimum || child->tag > maximum) return false;
-        cursor = child->end;
-    }
-
-    return clause.value("allow_extra", false) || cursor == outer->end;
-}
-
-bool ber_frame_matches(const std::string_view stream,
-                       const nlohmann::json& clause) {
-    const auto offset = clause.value("offset", 0U);
-    const auto element = ber_element_at(stream, offset);
-    if(!element.has_value() || element->end != stream.size()) return false;
-
-    if(clause.contains("tags")) {
-        const auto tags = clause.at("tags").get<std::vector<std::uint8_t>>();
-        return std::find(tags.begin(), tags.end(), element->tag) != tags.end();
-    }
-
-    const auto minimum = clause.value("tag_min", clause.value("tag", 0U));
-    const auto maximum = clause.value("tag_max", clause.value("tag", 255U));
-    return element->tag >= minimum && element->tag <= maximum;
-}
-
-bool tls_hello(const std::string_view stream, const unsigned char handshake_type) {
-    if (stream.size() < 11 || static_cast<unsigned char>(stream[0]) != 0x16 ||
-        static_cast<unsigned char>(stream[1]) != 0x03 ||
-        (static_cast<unsigned char>(stream[2]) & 0xf0U) != 0 ||
-        static_cast<unsigned char>(stream[5]) != handshake_type) return false;
-    const auto record_length = static_cast<std::uint32_t>(
-        (static_cast<unsigned char>(stream[3]) << 8U) |
-        static_cast<unsigned char>(stream[4]));
-    const auto handshake_length = static_cast<std::uint32_t>(
-        (static_cast<unsigned char>(stream[6]) << 16U) |
-        (static_cast<unsigned char>(stream[7]) << 8U) |
-        static_cast<unsigned char>(stream[8]));
-    return record_length >= 4 && handshake_length + 4U <= record_length;
-}
-
-std::string decode_hex(const std::string_view encoded) {
-    if (encoded.size() % 2 != 0) return {};
-    auto nibble = [](const char ch) -> int {
-        if (ch >= '0' && ch <= '9') return ch - '0';
-        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-        return -1;
-    };
-    std::string result;
-    result.reserve(encoded.size() / 2);
-    for (std::size_t i = 0; i < encoded.size(); i += 2) {
-        const auto high = nibble(encoded[i]);
-        const auto low = nibble(encoded[i + 1]);
-        if (high < 0 || low < 0) return {};
-        result.push_back(static_cast<char>((high << 4) | low));
-    }
-    return result;
-}
-
 struct ScanContext {
     std::unordered_set<std::size_t>& candidates;
     std::uint64_t emitted{};
 };
 
+// Hyperscan only nominates rules; exact clauses remain authoritative.
 int record_candidate(const unsigned id, unsigned long long, unsigned long long,
                      unsigned, void* context) {
     auto& scan = *static_cast<ScanContext*>(context);
@@ -258,70 +31,19 @@ int discard_candidate(unsigned, unsigned long long, unsigned long long,
     return 0;
 }
 
-constexpr std::size_t timing_median_window = 4096;
-
-void append_timing_sample(std::deque<std::uint64_t>& samples, const std::uint64_t value) {
-    if (samples.size() == timing_median_window) samples.pop_front();
-    samples.push_back(value);
-}
-
-double median_us(const std::deque<std::uint64_t>& samples) {
-    if (samples.empty()) return 0.0;
-    std::vector<std::uint64_t> ordered(samples.begin(), samples.end());
-    const auto middle = ordered.begin() + static_cast<std::ptrdiff_t>(ordered.size() / 2);
-    std::nth_element(ordered.begin(), middle, ordered.end());
-    if (ordered.size() % 2 != 0) return static_cast<double>(*middle) / 1000.0;
-    const auto lower = *std::max_element(ordered.begin(), middle);
-    return (static_cast<double>(lower) + static_cast<double>(*middle)) / 2000.0;
-}
-
 } // namespace
 
 void Runtime::load_signature_pack() {
+    // This generated JSON is compiled from the human-maintained YAML policy.
     const auto pack = nlohmann::json::parse(generated::signature_pack);
     for (const auto& source : pack.at("signatures")) {
         Rule rule{source.at("name").get<std::string>(), source.at("match"),
                   source.contains("candidates") && !source.at("candidates").empty()};
         for(const auto& clause : rule.clauses) {
             if(clause.contains("field") || clause.contains("fields")) continue;
-
-            const auto op = clause.at("op").get<std::string>();
-            std::size_t needed{};
-            if(op == "tls_handshake") {
-                needed = 11;
-            } else if(op == "uint_at" || op == "size_from_uint_at") {
-                needed = clause.value("offset", 0U) + clause.at("width").get<std::size_t>();
-            } else if(op == "label_sequence_at") {
-                needed = clause.at("offset").get<std::size_t>() + 2U;
-            } else if(op == "size_between") {
-                needed = clause.value("min", 0U);
-            } else if(op == "ber_sequence" || op == "ber_frame") {
-                needed = clause.value("offset", 0U) + 2U;
-            } else if(op == "quic_long_header") {
-                needed = clause.value("offset", 0U) + 7U;
-            } else if(op == "candidate_seen") {
-                needed = 0;
-            } else if(op == "decimal_prefix") {
-                needed = clause.at("digits").get<std::size_t>() + 1U;
-            } else if(op == "hex_at") {
-                const auto encoded = clause.at("value").get<std::string>();
-                needed = clause.value("offset", 0U) + decode_hex(encoded).size();
-            } else {
-                std::vector<std::string> values;
-                if(clause.contains("values")) {
-                    values = clause.at("values").get<std::vector<std::string>>();
-                } else if(clause.contains("value")) {
-                    values.push_back(clause.at("value").get<std::string>());
-                }
-                const auto longest = std::accumulate(
-                    values.begin(), values.end(), std::size_t{},
-                    [](const std::size_t current, const std::string& value) {
-                        return std::max(current, value.size());
-                    });
-                needed = op == "line_prefix_within"
-                    ? clause.value("limit", 0U) + longest + 1U : longest;
-            }
-            required_evidence_bytes_ = std::max(required_evidence_bytes_, needed);
+            required_evidence_bytes_ = std::max(
+                required_evidence_bytes_,
+                matching::required_evidence_bytes(clause));
         }
         const auto rule_id = static_cast<unsigned>(rules_.size());
         rules_.push_back(std::move(rule));
@@ -360,96 +82,13 @@ hs_database_t* Runtime::compile_database(const char side) const {
 }
 
 bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
+    // Clauses are ANDed; aliases within one metadata clause are ORed.
     const auto values = [](const nlohmann::json& clause) {
         std::vector<std::string> result;
         if (clause.contains("values")) result = clause.at("values").get<std::vector<std::string>>();
         else if (clause.contains("value")) result.push_back(clause.at("value").get<std::string>());
         return result;
     };
-    const auto stream_matches = [&values](const nlohmann::json& clause,
-                                          const std::string_view stream) {
-        const auto op = clause.at("op").get<std::string>();
-        const auto candidates = values(clause);
-        if (op == "prefix" || op == "prefix_any") {
-            return std::any_of(candidates.begin(), candidates.end(),
-                               [stream](const auto& value) { return stream.starts_with(value); });
-        }
-        if(op == "prefix_any_ci") {
-            return std::any_of(candidates.begin(), candidates.end(),
-                               [stream](const auto& value) {
-                                   return starts_with_ci(stream, value);
-                               });
-        }
-        if(op == "decimal_prefix") {
-            const auto digits = clause.at("digits").get<std::size_t>();
-            const auto separators = clause.at("separators").get<std::string>();
-            if(stream.size() <= digits) return false;
-
-            return std::all_of(
-                       stream.begin(), stream.begin() + static_cast<std::ptrdiff_t>(digits),
-                       [](const char value) {
-                           return std::isdigit(static_cast<unsigned char>(value)) != 0;
-                       }) && separators.find(stream[digits]) != std::string::npos;
-        }
-        if (op == "hex_at") {
-            const auto bytes = decode_hex(candidates.at(0));
-            return !bytes.empty() && at(stream, clause.value("offset", 0U), bytes);
-        }
-        if (op == "tls_handshake") {
-            return tls_hello(stream, static_cast<unsigned char>(clause.at("type").get<unsigned>()));
-        }
-        if(op == "uint_at" || op == "size_from_uint_at") {
-            const auto width = clause.at("width").get<std::size_t>();
-            const auto offset = clause.value("offset", 0U);
-            const auto integer = integer_at(
-                stream, offset, width, clause.value("endian", "be") == "le");
-            if(!integer.has_value()) return false;
-
-            if(op == "size_from_uint_at") {
-                const auto adjustment = clause.value("adjustment", 0U);
-                return static_cast<std::uint64_t>(*integer) + adjustment == stream.size();
-            }
-
-            if(clause.contains("mask") &&
-               clause.contains("masked_values")) {
-                const auto masked = *integer & clause.at("mask").get<std::uint32_t>();
-                const auto accepted = clause.at("masked_values")
-                    .get<std::vector<std::uint32_t>>();
-                if(std::find(accepted.begin(), accepted.end(), masked) == accepted.end()) {
-                    return false;
-                }
-            } else if(clause.contains("mask") &&
-                      ((*integer & clause.at("mask").get<std::uint32_t>()) !=
-                       clause.value("masked_value", 0U))) {
-                return false;
-            }
-            return *integer >= clause.value("min", 0U) &&
-                   *integer <= clause.value(
-                       "max", std::numeric_limits<std::uint32_t>::max());
-        }
-        if(op == "label_sequence_at") {
-            return has_label_sequence(
-                stream, clause.at("offset").get<std::size_t>(),
-                clause.value("max_label", 63U), clause.value("trailing_min", 0U));
-        }
-        if(op == "size_between") {
-            return stream.size() >= clause.value("min", 0U) &&
-                   stream.size() <= clause.value("max", std::numeric_limits<std::size_t>::max());
-        }
-        if(op == "ber_sequence") return ber_sequence_matches(stream, clause);
-        if(op == "ber_frame") return ber_frame_matches(stream, clause);
-        if(op == "quic_long_header") return quic_long_header_matches(stream, clause);
-        // candidate_seen is valid only on candidate-driven rules. Reaching
-        // rule_matches therefore proves that Hyperscan emitted the rule ID.
-        if(op == "candidate_seen") return true;
-        if (op == "line_prefix_within") {
-            const auto position = stream.find(candidates.at(0));
-            return position != std::string_view::npos && position <= clause.value("limit", 0U) &&
-                   (position == 0 || stream[position - 1] == '\n');
-        }
-        throw std::runtime_error("unsupported stream signature operation: " + op);
-    };
-
     return std::all_of(rule.clauses.begin(), rule.clauses.end(),
                        [&](const nlohmann::json& clause) {
         const auto op = clause.at("op").get<std::string>();
@@ -465,42 +104,25 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
             }
 
             const auto expected = values(clause);
-            if(op != "equals_any" && op != "domain_suffix_any") {
-                throw std::runtime_error("unsupported field signature operation: " + op);
-            }
 
             return std::any_of(field_names.begin(), field_names.end(),
                                [&](const auto& field_name) {
                 const auto found = flow.fields.find(field_name);
                 if(found == flow.fields.end()) return false;
-
-                if(op == "equals_any") {
-                    return std::any_of(found->second.begin(), found->second.end(),
-                                       [&expected](const auto& observed) {
-                        return std::find(expected.begin(), expected.end(), observed) !=
-                               expected.end();
-                    });
-                }
-
-                return std::any_of(found->second.begin(), found->second.end(),
-                                   [&expected](const auto& hostname) {
-                    return std::any_of(expected.begin(), expected.end(),
-                                       [&hostname](const auto& domain) {
-                        return domain_is(normalized_hostname(hostname),
-                                         normalized_hostname(domain));
-                    });
-                });
+                return matching::field_matches(op, expected, found->second);
             });
         }
         const auto side_text = clause.value("side", "E");
         const auto side = side_text.empty() ? 'E' : side_text.front();
-        if (side == 'L') return stream_matches(clause, flow.left);
-        if (side == 'R') return stream_matches(clause, flow.right);
-        return stream_matches(clause, flow.left) || stream_matches(clause, flow.right);
+        if(side == 'L') return matching::stream_matches(clause, flow.left);
+        if(side == 'R') return matching::stream_matches(clause, flow.right);
+        return matching::stream_matches(clause, flow.left) ||
+               matching::stream_matches(clause, flow.right);
     });
 }
 
 Runtime::Runtime(RuntimeConfig config) : config_(config) {
+    // Build immutable scanner resources before accepting flow data.
     try {
         load_signature_pack();
         config_.evidence_bytes_per_side = std::max(
@@ -570,6 +192,7 @@ void Runtime::sweep_locked(const std::chrono::steady_clock::time_point now,
 
 void Runtime::ensure_capacity_locked(const std::chrono::steady_clock::time_point now,
                                      const bool reserve_slot) {
+    // Prefer expiry; if still full, evict the least recently active flow.
     sweep_locked(now, true);
 
     const auto target = config_.max_flows - (reserve_slot ? 1U : 0U);
@@ -640,6 +263,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
     const auto is_right = side == 'R' || side == 'w';
     auto& flow = flow_it->second;
     flow.last_activity = now;
+    // Metadata accumulates across packets but remains bounded per flow.
     for (const auto& [field, values] : metadata.fields) {
         if(!flow.fields.contains(field) &&
            flow.fields.size() >= config_.max_field_names_per_flow) {
@@ -668,6 +292,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
     stream_bytes_seen += payload.size();
     peak_evidence_bytes_ = std::max(
         peak_evidence_bytes_, active_evidence_bytes_locked());
+    // Streaming Hyperscan cheaply narrows the exact rules evaluated below.
     ScanContext scan{flow.candidates};
     if (hs_scan_stream(scanner, payload.data(), static_cast<unsigned>(payload.size()),
                        0, scratch_, record_candidate, &scan) != HS_SUCCESS)
@@ -702,6 +327,8 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
         ++signature_matches_[signature];
     };
 
+    // Ungated rules run directly; candidate-driven rules run only after their
+    // inexpensive scanner pattern has appeared.
     for (const auto& rule : rules_) {
         if (rule.candidate_driven || flow.matches.contains(rule.name)) continue;
         if (rule_matches(rule, flow)) {
@@ -761,6 +388,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
         }
     };
 
+    // Probe known application-payload ranges without surrounding TLS framing.
     if(metadata.l7_payload_known) {
         std::unordered_map<std::string, std::string> l7_bytes;
 
@@ -796,7 +424,7 @@ Verdict Runtime::inspect(const FlowKey& key, const char side,
     engine_delay_last_ns_ = elapsed;
     engine_delay_min_ns_ = std::min(engine_delay_min_ns_, elapsed);
     engine_delay_max_ns_ = std::max(engine_delay_max_ns_, elapsed);
-    append_timing_sample(engine_delay_recent_ns_, elapsed);
+    matching::append_timing_sample(engine_delay_recent_ns_, elapsed);
     return verdict;
 }
 
@@ -835,7 +463,7 @@ void Runtime::record_total_delay(const std::chrono::nanoseconds elapsed) {
     total_delay_last_ns_ = value;
     total_delay_min_ns_ = std::min(total_delay_min_ns_, value);
     total_delay_max_ns_ = std::max(total_delay_max_ns_, value);
-    append_timing_sample(total_delay_recent_ns_, value);
+    matching::append_timing_sample(total_delay_recent_ns_, value);
 }
 
 void Runtime::close(const FlowKey& key) {
@@ -894,6 +522,7 @@ bool Runtime::configure(const nlohmann::json& update, std::string& error) {
     }
 
     std::scoped_lock guard(lock_);
+    // Validate a copy so a rejected update cannot partly mutate live limits.
     auto next = config_;
     const auto read_size = [&](const char* name, std::size_t& target,
                                const std::size_t minimum,
@@ -977,6 +606,7 @@ bool Runtime::configure(const nlohmann::json& update, std::string& error) {
 }
 
 nlohmann::json Runtime::status() {
+    // One lock makes counters and flow state a coherent point-in-time snapshot.
     std::scoped_lock guard(lock_);
     sweep_locked(std::chrono::steady_clock::now());
     auto signatures = nlohmann::json::object();
@@ -1046,14 +676,14 @@ nlohmann::json Runtime::status() {
                                           {"last", ns_to_us(engine_delay_last_ns_)},
                                           {"min", engine_delay_samples_ == 0 ? 0.0 : ns_to_us(engine_delay_min_ns_)},
                                           {"max", ns_to_us(engine_delay_max_ns_)},
-                                          {"median", median_us(engine_delay_recent_ns_)},
+                                          {"median", matching::median_microseconds(engine_delay_recent_ns_)},
                                           {"median_samples", engine_delay_recent_ns_.size()},
                                           {"average", average_engine_delay}}},
                     {"total_delay_us", {{"samples", total_delay_samples_},
                                          {"last", ns_to_us(total_delay_last_ns_)},
                                          {"min", total_delay_samples_ == 0 ? 0.0 : ns_to_us(total_delay_min_ns_)},
                                          {"max", ns_to_us(total_delay_max_ns_)},
-                                         {"median", median_us(total_delay_recent_ns_)},
+                                         {"median", matching::median_microseconds(total_delay_recent_ns_)},
                                          {"median_samples", total_delay_recent_ns_.size()},
                                          {"average", average_total_delay}}},
                     {"round_trip_us", nullptr},
