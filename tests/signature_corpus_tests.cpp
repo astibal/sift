@@ -48,6 +48,7 @@ std::string family_of(const std::string_view signature) {
        (parts[2] == "protocol" || parts[2] == "app")) {
         return std::string(parts[3]);
     }
+    if(parts.size() >= 2U && parts[0] == "streaming") return "streaming";
     if(parts.size() >= 2U) return std::string(parts[1]);
     return std::string(signature);
 }

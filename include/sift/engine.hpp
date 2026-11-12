@@ -106,6 +106,7 @@ private:
         std::string name;
         nlohmann::json clauses;
         bool candidate_driven{};
+        bool match_any{};
     };
     struct ScanPattern {
         std::string expression;

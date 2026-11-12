@@ -43,6 +43,21 @@ bool starts_with_ci(const std::string_view stream,
         });
 }
 
+bool path_has_extension(std::string_view path,
+                        const std::string_view extension) {
+    path = path.substr(0, path.find_first_of("?#"));
+    if(extension.empty() || path.size() <= extension.size()) return false;
+
+    const auto extension_offset = path.size() - extension.size();
+    if(extension_offset == 0 || path[extension_offset - 1] != '.') return false;
+    return std::equal(
+        extension.begin(), extension.end(), path.begin() + extension_offset,
+        [](const char left, const char right) {
+            return std::tolower(static_cast<unsigned char>(left)) ==
+                   std::tolower(static_cast<unsigned char>(right));
+        });
+}
+
 bool bytes_at(const std::string_view value, const std::size_t offset,
               const std::string_view bytes) {
     return value.size() >= offset + bytes.size() &&
@@ -450,6 +465,19 @@ bool field_matches(
                     expected.begin(), expected.end(), [&](const auto& domain) {
                         return domain_is(normalized,
                                          normalized_hostname(domain));
+                    });
+            });
+    }
+    if(operation == "path_extension_any") {
+        // Query parameters and fragments are not part of a resource's file
+        // extension. Comparison is case-insensitive because deployed HTTP
+        // paths are not consistently cased even when formats define a usual
+        // lowercase suffix.
+        return std::any_of(
+            observed.begin(), observed.end(), [&](const auto& path) {
+                return std::any_of(
+                    expected.begin(), expected.end(), [&](const auto& extension) {
+                        return path_has_extension(path, extension);
                     });
             });
     }

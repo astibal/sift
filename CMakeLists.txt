@@ -101,7 +101,8 @@ if(BUILD_TESTING)
         http1 http2 http3 dns doh quic tls dtls ssh ftp socks4 socks5 smb1 smb2
         smb3 smb postgresql mysql redis bgp ldap snmp kerberos ntp rdp rfb sip
         bittorrent amqp ajp13 memcached smtp imap pop3 syslog stun wireguard dhcp
-        diameter gtp radius kafka iec104 youtube negative)
+        diameter gtp radius kafka iec104 mqtt modbus opcua coap fastcgi youtube streaming
+        negative)
     foreach(family IN LISTS SIFT_SIGNATURE_FAMILIES)
         add_test(NAME "signatures.${family}"
             COMMAND sift_signature_corpus_tests

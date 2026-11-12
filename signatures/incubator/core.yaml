@@ -231,38 +231,6 @@ signatures:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/websocket/websocket.rs
 
-  - id: protocol.mqtt.connect
-    transport: tcp
-    layer: protocol
-    result: { protocol: mqtt }
-    confidence: high
-    logic: all
-    enables: mqtt
-    clauses:
-      - side: left
-        offset: 0
-        min_size: 8
-        match: { type: validator, name: mqtt.connect-fixed-header-and-protocol-name }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/mqtt/mqtt.rs#L682-L705
-
-  - id: protocol.modbus.tcp
-    transport: tcp
-    layer: protocol
-    result: { protocol: modbus }
-    confidence: high
-    logic: all
-    enables: modbus
-    clauses:
-      - side: either
-        offset: 0
-        min_size: 8
-        match: { type: validator, name: modbus.mbap-header-and-function }
-    sources:
-      - project: suricata
-        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/modbus/modbus.rs#L311-L350
-
   - id: protocol.enip.encapsulation
     transport: any
     layer: protocol

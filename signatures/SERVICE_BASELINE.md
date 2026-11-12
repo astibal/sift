@@ -38,6 +38,14 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | RADIUS | covered | Access-Request/Accept code, direction, and exact packet length |
 | Kafka | covered | Length-checked request header with bounded API key/version |
 | IEC 60870-5-104 | covered | Length-checked I, S, and defined U control formats |
+| MQTT | covered | CONNECT protocol name/version plus registered TLS ALPN |
+| Modbus/TCP | covered | MBAP protocol identifier, exact length, and function code |
+| OPC UA TCP | covered | HEL/ACK/ERR/RHE message types with exact little-endian size |
+| CoAP | covered | UDP request/response header constraints plus TLS ALPN |
+| FastCGI | covered | Fully constrained BEGIN_REQUEST record |
+| HLS manifest | covered | Inspected HTTP path or standardized manifest media type |
+| DASH manifest | covered | Inspected HTTP path or standardized manifest media type |
+| Streaming media segment | covered | Explicit segment path or `video/iso.segment` media type |
 
 ## Promotion order
 

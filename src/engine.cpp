@@ -38,7 +38,8 @@ void Runtime::load_signature_pack() {
     const auto pack = nlohmann::json::parse(generated::signature_pack);
     for (const auto& source : pack.at("signatures")) {
         Rule rule{source.at("name").get<std::string>(), source.at("match"),
-                  source.contains("candidates") && !source.at("candidates").empty()};
+                  source.contains("candidates") && !source.at("candidates").empty(),
+                  source.value("logic", "all") == "any"};
         for(const auto& clause : rule.clauses) {
             if(clause.contains("field") || clause.contains("fields")) continue;
             required_evidence_bytes_ = std::max(
@@ -82,15 +83,15 @@ hs_database_t* Runtime::compile_database(const char side) const {
 }
 
 bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
-    // Clauses are ANDed; aliases within one metadata clause are ORed.
+    // Clauses use the rule's declared logic; aliases within one metadata
+    // clause are always ORed.
     const auto values = [](const nlohmann::json& clause) {
         std::vector<std::string> result;
         if (clause.contains("values")) result = clause.at("values").get<std::vector<std::string>>();
         else if (clause.contains("value")) result.push_back(clause.at("value").get<std::string>());
         return result;
     };
-    return std::all_of(rule.clauses.begin(), rule.clauses.end(),
-                       [&](const nlohmann::json& clause) {
+    const auto clause_matches = [&](const nlohmann::json& clause) {
         const auto op = clause.at("op").get<std::string>();
         if(clause.contains("field") || clause.contains("fields")) {
             // `fields` represents aliases for the same observation across
@@ -118,7 +119,10 @@ bool Runtime::rule_matches(const Rule& rule, const Flow& flow) const {
         if(side == 'R') return matching::stream_matches(clause, flow.right);
         return matching::stream_matches(clause, flow.left) ||
                matching::stream_matches(clause, flow.right);
-    });
+    };
+    return rule.match_any
+        ? std::any_of(rule.clauses.begin(), rule.clauses.end(), clause_matches)
+        : std::all_of(rule.clauses.begin(), rule.clauses.end(), clause_matches);
 }
 
 Runtime::Runtime(RuntimeConfig config) : config_(config) {

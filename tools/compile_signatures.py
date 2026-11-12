@@ -7,7 +7,7 @@ import yaml
 
 ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
-    "line_prefix_within", "domain_suffix_any", "equals_any", "uint_at",
+    "line_prefix_within", "domain_suffix_any", "path_extension_any", "equals_any", "uint_at",
     "size_from_uint_at", "label_sequence_at", "size_between", "ber_sequence",
     "ber_frame", "quic_long_header", "candidate_seen",
 }
@@ -34,6 +34,8 @@ def main() -> None:
         if rule["name"] in names:
             raise SystemExit(f"duplicate signature: {rule['name']}")
         names.add(rule["name"])
+        if rule.get("logic", "all") not in {"all", "any"}:
+            raise SystemExit(f"signature {rule['name']} has unsupported match logic")
         if not isinstance(rule.get("match"), list) or not rule["match"]:
             raise SystemExit(f"signature {rule['name']} has no match clauses")
         encrypted_field_prefix = next(
