@@ -1,0 +1,676 @@
+signatures:
+  - name: protocol.bgp.message
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 19
+        max: 4096
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+      - side: E
+        op: size_from_uint_at
+        offset: 16
+        width: 2
+        endian: be
+      - side: E
+        op: uint_at
+        offset: 18
+        width: 1
+        endian: be
+        min: 1
+        max: 5
+    candidates:
+      - side: E
+        regex: '^\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc4271.html#section-4.1
+  - name: protocol.ldap.ber-message
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+          - udp
+      - side: E
+        op: ber_sequence
+        tag: 48
+        children:
+          - tag: 2
+          - tag_min: 96
+            tag_max: 119
+    candidates:
+      - side: E
+        regex: '^\x30'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc4511.html#section-4.1.1
+  - name: protocol.snmp.ber-message
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+          - tcp
+      - side: E
+        op: ber_sequence
+        tag: 48
+        children:
+          - tag: 2
+          - tag: 4
+          - tag_min: 160
+            tag_max: 168
+    candidates:
+      - side: E
+        regex: '^\x30'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc3416.html#section-4
+  - name: protocol.kerberos.udp
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: ber_frame
+        tags:
+          - 106
+          - 107
+          - 108
+          - 109
+          - 110
+          - 111
+          - 116
+          - 117
+          - 118
+          - 126
+    candidates:
+      - side: E
+        regex: '^[\x6a-\x6f\x74-\x76\x7e]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc4120.html#section-5.10
+  - name: protocol.kerberos.tcp
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_from_uint_at
+        offset: 0
+        width: 4
+        endian: be
+        adjustment: 4
+      - side: E
+        op: ber_frame
+        offset: 4
+        tags:
+          - 106
+          - 107
+          - 108
+          - 109
+          - 110
+          - 111
+          - 116
+          - 117
+          - 118
+          - 126
+    candidates:
+      - side: E
+        regex: '^....[\x6a-\x6f\x74-\x76\x7e]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc4120.html#section-7.2.2
+  - name: protocol.ntp.base-packet
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 48
+        max: 48
+      - side: E
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 56
+        masked_values:
+          - 24
+          - 32
+      - side: E
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 7
+        masked_values:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+    candidates:
+      - side: E
+        regex: '^[\x19-\x1d\x21-\x25\x59-\x5d\x61-\x65\x99-\x9d\xa1-\xa5\xd9-\xdd\xe1-\xe5]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc5905.html#section-7.3
+  - name: protocol.rdp.x224
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 7
+        max: 65535
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "0300"
+      - side: E
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+      - side: E
+        op: uint_at
+        offset: 5
+        width: 1
+        endian: be
+        masked_values:
+          - 208
+          - 224
+        mask: 255
+    candidates:
+      - side: E
+        regex: '^\x03\x00...[\xd0\xe0]'
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/rdp/rdp.rs#L440-L469
+  - name: protocol.rfb.banner-both
+    match:
+      - side: L
+        op: prefix
+        value: "RFB "
+      - side: R
+        op: prefix
+        value: "RFB "
+    candidates:
+      - side: E
+        regex: '^RFB '
+  - name: protocol.sip.dialog
+    match:
+      - side: L
+        op: prefix_any
+        values:
+          - "REGISTER "
+          - "INVITE "
+          - "BYE "
+          - "OPTIONS "
+      - side: R
+        op: prefix
+        value: "SIP/2.0"
+    candidates:
+      - side: L
+        regex: '^(REGISTER|INVITE|BYE|OPTIONS) '
+      - side: R
+        regex: '^SIP/2\.0'
+  - name: protocol.sip
+    match:
+      - side: L
+        op: prefix_any
+        values:
+          - "REGISTER "
+          - "INVITE "
+          - "BYE "
+          - "OPTIONS "
+      - side: R
+        op: prefix
+        value: "SIP/2.0"
+    candidates:
+      - side: L
+        regex: '^(REGISTER|INVITE|BYE|OPTIONS) '
+      - side: R
+        regex: '^SIP/2\.0'
+  - name: enc.tls.protocol.sip
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - "sip/2"
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.bittorrent.handshake
+    match:
+      - side: E
+        op: hex_at
+        offset: 0
+        value: 13426974546f7272656e742070726f746f636f6c
+    candidates:
+      - side: E
+        regex: '^\x13BitTorrent protocol'
+  - name: protocol.amqp.v091
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: 414d515000000901
+    candidates:
+      - side: L
+        regex: '^AMQP\x00\x00\x09\x01'
+  - name: protocol.amqp.v10
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: 414d515000010000
+    candidates:
+      - side: L
+        regex: '^AMQP\x00\x01\x00\x00'
+  - name: protocol.amqp.sasl
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: 414d515003010000
+    candidates:
+      - side: L
+        regex: '^AMQP\x03\x01\x00\x00'
+  - name: protocol.ajp13.ping
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: 123400010a
+    candidates:
+      - side: L
+        regex: '^\x12\x34\x00\x01\x0a'
+  - name: protocol.ajp13.cpong
+    match:
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "4142000109"
+    candidates:
+      - side: R
+        regex: '^AB\x00\x01\x09'
+  - name: protocol.ajp13.forward-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 5
+        max: 65539
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "1234"
+      - side: L
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 4
+      - side: L
+        op: hex_at
+        offset: 4
+        value: "02"
+    candidates:
+      - side: L
+        regex: '^\x12\x34..\x02'
+    sources:
+      - project: tomcat
+        url: https://tomcat.apache.org/connectors-doc/ajp/ajpv13a.html
+  - name: protocol.ajp13.shutdown
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 5
+        max: 65539
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "1234"
+      - side: L
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 4
+      - side: L
+        op: hex_at
+        offset: 4
+        value: "07"
+    candidates:
+      - side: L
+        regex: '^\x12\x34..\x07'
+    sources:
+      - project: tomcat
+        url: https://tomcat.apache.org/connectors-doc/ajp/ajpv13a.html
+  - name: protocol.memcached.ascii
+    match:
+      - side: L
+        op: prefix_any
+        values:
+          - "get "
+          - "gets "
+          - "set "
+          - "add "
+          - "replace "
+          - "append "
+          - "prepend "
+          - "cas "
+          - "delete "
+          - "incr "
+          - "decr "
+          - "touch "
+          - "stats\r"
+          - "version\r"
+          - flush_all
+    candidates:
+      - side: L
+        regex: '^(get|gets|set|add|replace|append|prepend|cas|delete|incr|decr|touch) '
+      - side: L
+        regex: '^(stats|version)\x0d'
+      - side: L
+        regex: '^flush_all'
+  - name: protocol.memcached.binary-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 24
+        max: 16777239
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "80"
+      - side: L
+        op: size_from_uint_at
+        offset: 8
+        width: 4
+        endian: be
+        adjustment: 24
+    candidates:
+      - side: L
+        regex: '^\x80.......'
+    sources:
+      - project: memcached
+        url: https://github.com/memcached/memcached/blob/1.6.39/doc/protocol-binary.xml
+  - name: protocol.memcached.binary-response
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: R
+        op: size_between
+        min: 24
+        max: 16777239
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "81"
+      - side: R
+        op: size_from_uint_at
+        offset: 8
+        width: 4
+        endian: be
+        adjustment: 24
+    candidates:
+      - side: R
+        regex: '^\x81.......'
+    sources:
+      - project: memcached
+        url: https://github.com/memcached/memcached/blob/1.6.39/doc/protocol-binary.xml
+  - name: protocol.diameter.request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 20
+        max: 16777215
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "01"
+      - side: L
+        op: size_from_uint_at
+        offset: 1
+        width: 3
+        endian: be
+      - side: L
+        op: uint_at
+        offset: 4
+        width: 1
+        endian: be
+        mask: 128
+        masked_value: 128
+      - side: L
+        op: uint_at
+        offset: 5
+        width: 3
+        endian: be
+        min: 1
+    candidates:
+      - side: L
+        regex: '^\x01...[\x80-\xff]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc6733.html#section-3
+  - name: protocol.diameter.answer
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: R
+        op: size_between
+        min: 20
+        max: 16777215
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "01"
+      - side: R
+        op: size_from_uint_at
+        offset: 1
+        width: 3
+        endian: be
+      - side: R
+        op: uint_at
+        offset: 4
+        width: 1
+        endian: be
+        mask: 128
+        masked_value: 0
+      - side: R
+        op: uint_at
+        offset: 5
+        width: 3
+        endian: be
+        min: 1
+    candidates:
+      - side: R
+        regex: '^\x01...[\x00-\x7f]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc6733.html#section-3
+  - name: protocol.gtp.v1
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 8
+        max: 65543
+      - side: E
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 224
+        masked_value: 32
+      - side: E
+        op: uint_at
+        offset: 1
+        width: 1
+        endian: be
+        min: 1
+      - side: E
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 8
+    candidates:
+      - side: E
+        regex: '^[\x20-\x3f].'
+    sources:
+      - project: etsi
+        url: https://www.etsi.org/deliver/etsi_ts/129000_129099/129060/17.02.00_60/ts_129060v170200p.pdf
+  - name: protocol.gtp.v2
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 8
+        max: 65539
+      - side: E
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 224
+        masked_value: 64
+      - side: E
+        op: uint_at
+        offset: 1
+        width: 1
+        endian: be
+        min: 1
+      - side: E
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 4
+    candidates:
+      - side: E
+        regex: '^[\x40-\x5f].'
+    sources:
+      - project: etsi
+        url: https://www.etsi.org/deliver/etsi_ts/129200_129299/129274/17.11.00_60/ts_129274v171100p.pdf
+  - name: protocol.radius.access-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 20
+        max: 4096
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "01"
+      - side: L
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+    candidates:
+      - side: L
+        regex: '^\x01...'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc2865.html#section-3
+  - name: protocol.radius.access-accept
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 20
+        max: 4096
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "02"
+      - side: R
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+    candidates:
+      - side: R
+        regex: '^\x02...'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc2865.html#section-3
+  - name: protocol.kafka.request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 12
+        max: 104857600
+      - side: L
+        op: size_from_uint_at
+        offset: 0
+        width: 4
+        endian: be
+        adjustment: 4
+      - side: L
+        op: uint_at
+        offset: 4
+        width: 2
+        endian: be
+        max: 100
+      - side: L
+        op: uint_at
+        offset: 6
+        width: 2
+        endian: be
+        max: 20
+    sources:
+      - project: apache-kafka
+        url: https://kafka.apache.org/protocol.html#protocol_common

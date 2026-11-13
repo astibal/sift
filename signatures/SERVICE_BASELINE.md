@@ -46,6 +46,10 @@ requestor-provided ports may later adjust confidence but cannot create a match.
 | HLS manifest | covered | Inspected HTTP path or standardized manifest media type |
 | DASH manifest | covered | Inspected HTTP path or standardized manifest media type |
 | Streaming media segment | covered | Explicit segment path or `video/iso.segment` media type |
+| RTSP | covered | Complete request/status line with RTSP version and transport constraint |
+| RTCP | covered | Sender/receiver reports with version and scaled 32-bit-word length |
+| DHCPv6 | covered | Directional message types with a complete option TLV sequence |
+| S7comm | partial | Structurally constrained Setup Communication request and response |
 
 ## Promotion order
 

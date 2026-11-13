@@ -48,6 +48,31 @@ A signature change must:
 
 Generated artifacts are build products. YAML is the authoritative source.
 
+## Pack layout
+
+`signatures/default.yaml` is the production manifest. It owns pack-wide
+metadata and lists local signature groups through `includes`:
+
+```text
+signatures/
+├── default.yaml
+├── protocols/
+│   └── <protocol-group>.yaml
+└── applications/
+    └── <application-group>.yaml
+```
+
+Included paths are relative to the file that declares them and must remain
+inside the production pack directory. Includes are expanded in declaration
+order, so rule ordering stays explicit and reviewable. Cycles, duplicate
+includes, duplicate signature names, and paths escaping the pack directory
+are compilation errors.
+
+Keep one signature as a readable block mapping. Do not compress complete
+rules, match clauses, candidates, or provenance into single-line flow-style
+YAML. Group files should be cohesive enough that their names tell reviewers
+where a new signature belongs.
+
 ## Signature incubator
 
 Unverified discoveries belong in `signatures/incubator/`, not in the runtime

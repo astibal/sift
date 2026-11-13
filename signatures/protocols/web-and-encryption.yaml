@@ -1,0 +1,315 @@
+signatures:
+  - name: protocol.http1.request
+    match:
+      - side: L
+        op: prefix_any
+        values:
+          - "OPTIONS "
+          - "GET "
+          - "HEAD "
+          - "POST "
+          - "PUT "
+          - "DELETE "
+          - "CONNECT "
+          - "PATCH "
+          - "PROPFIND "
+          - "PROPPATCH "
+          - "TRACE "
+          - "UPDATE "
+    candidates:
+      - side: L
+        regex: '^(OPTIONS|GET|HEAD|POST|PUT|DELETE|CONNECT|PATCH|PROPFIND|PROPPATCH|TRACE|UPDATE) '
+  - name: protocol.http1.response
+    match:
+      - side: R
+        op: prefix
+        value: "HTTP/"
+    candidates:
+      - side: R
+        regex: '^HTTP/[0-9]'
+  - name: protocol.http2.prior-knowledge
+    match:
+      - side: L
+        op: prefix
+        value: "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    candidates:
+      - side: L
+        regex: '^PRI \* HTTP/2\.0\x0d\x0a\x0d\x0aSM\x0d\x0a\x0d\x0a'
+  - name: protocol.http2
+    match:
+      - field: flow.http2
+        op: equals_any
+        values:
+          - "true"
+  - name: protocol.http1
+    match:
+      - field: flow.http1
+        op: equals_any
+        values:
+          - "true"
+  - name: protocol.http3
+    match:
+      - field: flow.http3
+        op: equals_any
+        values:
+          - "true"
+  - name: protocol.dns.udp
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 17
+        max: 4096
+      - side: E
+        op: uint_at
+        offset: 2
+        width: 2
+        endian: be
+        mask: 112
+        masked_value: 0
+      - side: E
+        op: uint_at
+        offset: 4
+        width: 2
+        endian: be
+        min: 1
+        max: 16
+      - side: E
+        op: label_sequence_at
+        offset: 12
+        max_label: 63
+        trailing_min: 4
+    candidates:
+      - side: E
+        regex: '^....\x00[\x01-\x10]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc1035.html#section-4.1
+  - name: protocol.dns.tcp
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_from_uint_at
+        offset: 0
+        width: 2
+        endian: be
+        adjustment: 2
+      - side: E
+        op: uint_at
+        offset: 4
+        width: 2
+        endian: be
+        mask: 112
+        masked_value: 0
+      - side: E
+        op: uint_at
+        offset: 6
+        width: 2
+        endian: be
+        min: 1
+        max: 16
+      - side: E
+        op: label_sequence_at
+        offset: 14
+        max_label: 63
+        trailing_min: 4
+    candidates:
+      - side: E
+        regex: '^......\x00[\x01-\x10]'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc1035.html#section-4.2.2
+  - name: enc.tls.protocol.dns
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - dot
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.doh
+    match:
+      - fields:
+          - flow.http1.content_type
+          - flow.http1.accept
+          - flow.http1.subprotocol
+          - flow.http2.content_type
+          - flow.http2.accept
+          - flow.http2.subprotocol
+          - flow.http3.content_type
+          - flow.http3.accept
+          - flow.http3.subprotocol
+        op: equals_any
+        values:
+          - application/dns-message
+          - dns
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8484.html
+  - name: enc.quic.protocol.dns
+    match:
+      - field: flow.quic.alpn
+        op: equals_any
+        values:
+          - doq
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc9250.html
+  - name: enc.tls.protocol.http1
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - "http/1.0"
+          - "http/1.1"
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: enc.tls.protocol.http2
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - h2
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: enc.quic.protocol.http3
+    match:
+      - field: flow.quic.alpn
+        op: equals_any
+        values:
+          - h3
+          - h3-29
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: security.tls.client-hello
+    match:
+      - side: L
+        op: tls_handshake
+        type: 1
+    candidates:
+      - side: L
+        regex: '^\x16\x03[\x00-\x0f]..\x01'
+  - name: security.tls.server-hello
+    match:
+      - side: R
+        op: tls_handshake
+        type: 2
+    candidates:
+      - side: R
+        regex: '^\x16\x03[\x00-\x0f]..\x02'
+  - name: security.dtls.client-hello
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 25
+        max: 65535
+      - side: L
+        op: hex_at
+        offset: 3
+        value: "0000"
+      - side: L
+        op: size_from_uint_at
+        offset: 11
+        width: 2
+        endian: be
+        adjustment: 13
+      - side: L
+        op: uint_at
+        offset: 14
+        width: 3
+        endian: be
+        min: 1
+      - side: L
+        op: uint_at
+        offset: 19
+        width: 3
+        endian: be
+        max: 0
+      - side: L
+        op: size_from_uint_at
+        offset: 22
+        width: 3
+        endian: be
+        adjustment: 25
+    candidates:
+      - side: L
+        regex: '^\x16\xfe[\xfd\xff].{10}\x01'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ssl/dpd.sig
+  - name: protocol.quic.v1-initial
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 1200
+        max: 65535
+      - side: L
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 240
+        masked_value: 192
+      - side: L
+        op: hex_at
+        offset: 1
+        value: "00000001"
+      - side: L
+        op: quic_long_header
+        has_token_length: true
+        max_connection_id_length: 20
+    candidates:
+      - side: L
+        regex: '^[\xc0-\xcf]\x00\x00\x00\x01'
+    sources:
+      - project: zeek
+        url: https://github.com/OISF/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig
+  - name: protocol.quic.v2-initial
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 1200
+        max: 65535
+      - side: L
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 240
+        masked_value: 208
+      - side: L
+        op: hex_at
+        offset: 1
+        value: "6B3343CF"
+      - side: L
+        op: quic_long_header
+        has_token_length: true
+        max_connection_id_length: 20
+    candidates:
+      - side: L
+        regex: '^[\xd0-\xdf]\x6b\x33\x43\xcf'
+    sources:
+      - project: zeek
+        url: https://github.com/OISF/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/quic/dpd.sig

@@ -1,0 +1,85 @@
+signatures:
+  - name: protocol.smtp
+    match:
+      - side: L
+        op: prefix_any_ci
+        values:
+          - "EHLO "
+          - "HELO "
+      - side: R
+        op: decimal_prefix
+        digits: 3
+        separators: " -"
+    candidates:
+      - side: L
+        regex: '^([Ee][Hh][Ll][Oo]|[Hh][Ee][Ll][Oo]) '
+      - side: R
+        regex: '^[0-9]{3}[ -]'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/smtp/dpd.sig
+  - name: protocol.imap
+    match:
+      - side: R
+        op: prefix_any_ci
+        values:
+          - "* OK "
+          - "* PREAUTH "
+          - "* BYE "
+    candidates:
+      - side: R
+        regex: '^\* ([Oo][Kk]|[Pp][Rr][Ee][Aa][Uu][Tt][Hh]|[Bb][Yy][Ee]) '
+    sources:
+      - project: suricata
+        url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/src/app-layer-imap.c#L64-L115
+  - name: enc.tls.protocol.imap
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - imap
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.pop3
+    match:
+      - side: L
+        op: prefix_any_ci
+        values:
+          - "USER "
+          - "APOP "
+          - "CAPA\r"
+          - "AUTH "
+          - "STLS\r"
+      - side: R
+        op: prefix_any_ci
+        values:
+          - "+OK "
+          - "+OK\r"
+    candidates:
+      - side: L
+        regex: '^([Uu][Ss][Ee][Rr] |[Aa][Pp][Oo][Pp] |[Cc][Aa][Pp][Aa]\x0d|[Aa][Uu][Tt][Hh] |[Ss][Tt][Ll][Ss]\x0d)'
+      - side: R
+        regex: '^\+[Oo][Kk]( |\x0d)'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/pop3/dpd.sig
+  - name: enc.tls.protocol.pop3
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - pop3
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.syslog
+    match:
+      - side: E
+        op: candidate_seen
+    candidates:
+      - side: E
+        regex: '^<(?:[0-9]|[1-9][0-9]|1[0-8][0-9]|19[01])>(?:1 (?:-|[0-9]{4}-[0-9]{2}-[0-9]{2}T)|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-6][0-9] )'
+    sources:
+      - project: wireshark
+        url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-syslog.c

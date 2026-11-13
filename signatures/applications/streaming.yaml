@@ -1,0 +1,116 @@
+signatures:
+  - name: streaming.hls.manifest
+    logic: any
+    match:
+      - fields:
+          - flow.http1.path
+          - flow.http1.url
+          - flow.http2.path
+          - flow.http2.url
+          - flow.http3.path
+          - flow.http3.url
+        op: path_extension_any
+        values:
+          - m3u8
+          - m3u
+      - fields:
+          - flow.http1.content_type
+          - flow.http2.content_type
+          - flow.http3.content_type
+        op: equals_any
+        values:
+          - application/vnd.apple.mpegurl
+          - audio/mpegurl
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8216.html#section-4
+  - name: streaming.dash.manifest
+    logic: any
+    match:
+      - fields:
+          - flow.http1.path
+          - flow.http1.url
+          - flow.http2.path
+          - flow.http2.url
+          - flow.http3.path
+          - flow.http3.url
+        op: path_extension_any
+        values:
+          - mpd
+      - fields:
+          - flow.http1.content_type
+          - flow.http2.content_type
+          - flow.http3.content_type
+        op: equals_any
+        values:
+          - application/dash+xml
+    sources:
+      - project: dash-industry-forum
+        url: https://dashif.org/Guidelines-TimingModel/Timing-Model.pdf
+  - name: streaming.media.segment
+    logic: any
+    match:
+      - fields:
+          - flow.http1.path
+          - flow.http1.url
+          - flow.http2.path
+          - flow.http2.url
+          - flow.http3.path
+          - flow.http3.url
+        op: path_extension_any
+        values:
+          - m4s
+          - cmfv
+          - cmfa
+          - cmft
+          - cmfm
+      - fields:
+          - flow.http1.content_type
+          - flow.http2.content_type
+          - flow.http3.content_type
+        op: equals_any
+        values:
+          - video/iso.segment
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/media-types/video/iso.segment
+      - project: dash-industry-forum
+        url: https://dashif.org/Ingest/Ingest.pdf
+  - name: enc.tls.app.youtube.video
+    match:
+      - field: flow.tls.sni
+        op: domain_suffix_any
+        values:
+          - googlevideo.com
+  - name: enc.tls.app.youtube
+    match:
+      - field: flow.tls.sni
+        op: domain_suffix_any
+        values:
+          - youtube.com
+          - youtube-nocookie.com
+          - youtu.be
+          - ytimg.com
+          - youtubei.googleapis.com
+  - name: app.youtube.video
+    match:
+      - fields:
+          - flow.http1.host
+          - flow.http2.authority
+          - flow.http3.authority
+        op: domain_suffix_any
+        values:
+          - googlevideo.com
+  - name: app.youtube
+    match:
+      - fields:
+          - flow.http1.host
+          - flow.http2.authority
+          - flow.http3.authority
+        op: domain_suffix_any
+        values:
+          - youtube.com
+          - youtube-nocookie.com
+          - youtu.be
+          - ytimg.com
+          - youtubei.googleapis.com

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from compile_signatures import load_signature_document
+
 
 ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]+")
 ALLOWED = {
@@ -75,7 +77,7 @@ def main() -> int:
     arguments = parser.parse_args()
     count, errors = validate(arguments.paths)
     production_path = Path(__file__).resolve().parents[1] / "signatures" / "default.yaml"
-    production = yaml.safe_load(production_path.read_text(encoding="utf-8"))
+    production = load_signature_document(production_path)
     production_ids = {rule["name"] for rule in production["signatures"]}
     incubator_ids = {
         signature["id"]

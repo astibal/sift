@@ -3,46 +3,251 @@ version: 1
 # Second-wave protocol candidates. Validators named here perform complete
 # header/length/version checks; fixed clauses are only inexpensive gates.
 x-sources:
-  stun: &stun [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-stun.c" }]
-  mysql: &mysql [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c" }]
-  amqp: &amqp [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-amqp.c" }]
-  coap: &coap [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-coap.c" }]
-  openvpn: &openvpn [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-openvpn.c" }]
-  wireguard: &wireguard [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-wireguard.c" }]
-  ajp: &ajp [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-ajp13.c" }]
-  fcgi: &fcgi [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-fcgi.c" }]
-  git: &git [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-git.c" }]
-  dhcpv6: &dhcpv6 [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-dhcpv6.c" }]
-  diameter: &diameter [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-diameter.c" }]
-  s7: &s7 [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-s7comm.c" }]
-  iec104: &iec104 [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c" }]
-  kafka: &kafka [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-kafka.c" }]
-  memcache: &memcache [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-memcache.c" }]
-  couchbase: &couchbase [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-couchbase.c" }]
-  gtp: &gtp [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-gtp.c" }]
-  radius: &radius [{ project: wireshark, url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-radius.c" }]
+  stun:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-stun.c"
+  mysql: &mysql
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-mysql.c"
+  amqp:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-amqp.c"
+  coap: &coap
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-coap.c"
+  openvpn: &openvpn
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-openvpn.c"
+  wireguard:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-wireguard.c"
+  ajp:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-ajp13.c"
+  fcgi: &fcgi
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-fcgi.c"
+  git: &git
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-git.c"
+  dhcpv6:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-dhcpv6.c"
+  diameter:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-diameter.c"
+  s7: &s7
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-s7comm.c"
+  iec104:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c"
+  kafka:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-kafka.c"
+  memcache:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-memcache.c"
+  couchbase: &couchbase
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-couchbase.c"
+  gtp:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-gtp.c"
+  radius:
+    - project: wireshark
+      url: "https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-radius.c"
 
 signatures:
-  - { id: protocol.mysql.client-handshake, transport: tcp, layer: protocol, result: { protocol: mysql, message: client_handshake }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, min_size: 36, match: { type: validator, name: mysql.packet-and-client-capabilities } }], sources: *mysql }
+  - id: protocol.mysql.client-handshake
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: mysql
+      message: client_handshake
+    confidence: high
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 36
+        match:
+          type: validator
+          name: mysql.packet-and-client-capabilities
+    sources: *mysql
 
 
-  - { id: protocol.coap.tcp, transport: tcp, layer: protocol, result: { protocol: coap }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 2, match: { type: validator, name: coap.tcp-length-token-options } }], sources: *coap }
+  - id: protocol.coap.tcp
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: coap
+    confidence: high
+    logic: all
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 2
+        match:
+          type: validator
+          name: coap.tcp-length-token-options
+    sources: *coap
 
-  - { id: protocol.openvpn.control, transport: udp, layer: tunnel, result: { protocol: openvpn, channel: control }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 10, match: { type: validator, name: openvpn.control-opcode-session-id } }], sources: *openvpn }
-  - { id: protocol.openvpn.data, transport: udp, layer: tunnel, result: { protocol: openvpn, channel: data }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 5, match: { type: validator, name: openvpn.data-opcode-peer-id } }], sources: *openvpn }
+  - id: protocol.openvpn.control
+    transport: udp
+    layer: tunnel
+    result:
+      protocol: openvpn
+      channel: control
+    confidence: high
+    logic: all
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 10
+        match:
+          type: validator
+          name: openvpn.control-opcode-session-id
+    sources: *openvpn
+  - id: protocol.openvpn.data
+    transport: udp
+    layer: tunnel
+    result:
+      protocol: openvpn
+      channel: data
+    confidence: high
+    logic: all
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 5
+        match:
+          type: validator
+          name: openvpn.data-opcode-peer-id
+    sources: *openvpn
 
-  - { id: protocol.fastcgi.params, transport: tcp, layer: protocol, result: { protocol: fastcgi, message: params }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, match: { type: bytes, value_hex: '01 04' } }, { side: left, offset: 0, min_size: 8, match: { type: validator, name: fastcgi.record-header } }], sources: *fcgi }
-  - { id: protocol.fastcgi.stdin, transport: tcp, layer: protocol, result: { protocol: fastcgi, message: stdin }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, match: { type: bytes, value_hex: '01 05' } }, { side: left, offset: 0, min_size: 8, match: { type: validator, name: fastcgi.record-header } }], sources: *fcgi }
+  - id: protocol.fastcgi.params
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: fastcgi
+      message: params
+    confidence: high
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        match:
+          type: bytes
+          value_hex: '01 04'
+      - side: left
+        offset: 0
+        min_size: 8
+        match:
+          type: validator
+          name: fastcgi.record-header
+    sources: *fcgi
+  - id: protocol.fastcgi.stdin
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: fastcgi
+      message: stdin
+    confidence: high
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        match:
+          type: bytes
+          value_hex: '01 05'
+      - side: left
+        offset: 0
+        min_size: 8
+        match:
+          type: validator
+          name: fastcgi.record-header
+    sources: *fcgi
 
-  - { id: protocol.git.upload-pack, transport: tcp, layer: protocol, result: { protocol: git, service: upload-pack }, confidence: certain, logic: all, clauses: [{ side: left, offset: 0, min_size: 20, match: { type: validator, name: git.pkt-line-upload-pack } }], sources: *git }
-  - { id: protocol.git.receive-pack, transport: tcp, layer: protocol, result: { protocol: git, service: receive-pack }, confidence: certain, logic: all, clauses: [{ side: left, offset: 0, min_size: 20, match: { type: validator, name: git.pkt-line-receive-pack } }], sources: *git }
-  - { id: protocol.git.upload-archive, transport: tcp, layer: protocol, result: { protocol: git, service: upload-archive }, confidence: certain, logic: all, clauses: [{ side: left, offset: 0, min_size: 20, match: { type: validator, name: git.pkt-line-upload-archive } }], sources: *git }
+  - id: protocol.git.upload-pack
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: git
+      service: upload-pack
+    confidence: certain
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 20
+        match:
+          type: validator
+          name: git.pkt-line-upload-pack
+    sources: *git
+  - id: protocol.git.receive-pack
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: git
+      service: receive-pack
+    confidence: certain
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 20
+        match:
+          type: validator
+          name: git.pkt-line-receive-pack
+    sources: *git
+  - id: protocol.git.upload-archive
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: git
+      service: upload-archive
+    confidence: certain
+    logic: all
+    clauses:
+      - side: left
+        offset: 0
+        min_size: 20
+        match:
+          type: validator
+          name: git.pkt-line-upload-archive
+    sources: *git
 
-  - { id: protocol.dhcpv6.client-message, transport: udp, layer: protocol, result: { protocol: dhcpv6, direction: client }, confidence: high, logic: all, clauses: [{ side: left, offset: 0, min_size: 4, match: { type: validator, name: dhcpv6.client-message-options } }], sources: *dhcpv6 }
-  - { id: protocol.dhcpv6.server-message, transport: udp, layer: protocol, result: { protocol: dhcpv6, direction: server }, confidence: high, logic: all, clauses: [{ side: right, offset: 0, min_size: 4, match: { type: validator, name: dhcpv6.server-message-options } }], sources: *dhcpv6 }
+  - id: protocol.s7comm.data
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: s7comm
+      message: data
+    confidence: high
+    logic: all
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 12
+        match:
+          type: validator
+          name: s7comm.tpkt-cotp-data
+    sources: *s7
 
-  - { id: protocol.s7comm.setup-communication, transport: tcp, layer: protocol, result: { protocol: s7comm, message: setup_communication }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 17, match: { type: validator, name: s7comm.tpkt-cotp-setup } }], sources: *s7 }
-  - { id: protocol.s7comm.data, transport: tcp, layer: protocol, result: { protocol: s7comm, message: data }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 12, match: { type: validator, name: s7comm.tpkt-cotp-data } }], sources: *s7 }
 
-
-  - { id: protocol.couchbase.binary, transport: tcp, layer: protocol, result: { protocol: couchbase }, confidence: high, logic: all, clauses: [{ side: either, offset: 0, min_size: 24, match: { type: validator, name: couchbase.magic-opcode-header } }], sources: *couchbase }
+  - id: protocol.couchbase.binary
+    transport: tcp
+    layer: protocol
+    result:
+      protocol: couchbase
+    confidence: high
+    logic: all
+    clauses:
+      - side: either
+        offset: 0
+        min_size: 24
+        match:
+          type: validator
+          name: couchbase.magic-opcode-header
+    sources: *couchbase

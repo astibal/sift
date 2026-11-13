@@ -1,0 +1,364 @@
+signatures:
+  - name: protocol.stun.binding-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 20
+        max: 65555
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "0001"
+      - side: L
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 20
+      - side: L
+        op: hex_at
+        offset: 4
+        value: "2112A442"
+    candidates:
+      - side: L
+        regex: '^\x00\x01..\x21\x12\xa4\x42'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5
+  - name: protocol.stun.binding-indication
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 20
+        max: 65555
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "0011"
+      - side: L
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 20
+      - side: L
+        op: hex_at
+        offset: 4
+        value: "2112A442"
+    candidates:
+      - side: L
+        regex: '^\x00\x11..\x21\x12\xa4\x42'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5
+  - name: protocol.stun.binding-success
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 20
+        max: 65555
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "0101"
+      - side: R
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 20
+      - side: R
+        op: hex_at
+        offset: 4
+        value: "2112A442"
+    candidates:
+      - side: R
+        regex: '^\x01\x01..\x21\x12\xa4\x42'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5
+  - name: protocol.stun.binding-error
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 20
+        max: 65555
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "0111"
+      - side: R
+        op: size_from_uint_at
+        offset: 2
+        width: 2
+        endian: be
+        adjustment: 20
+      - side: R
+        op: hex_at
+        offset: 4
+        value: "2112A442"
+    candidates:
+      - side: R
+        regex: '^\x01\x11..\x21\x12\xa4\x42'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8489.html#section-5
+  - name: protocol.wireguard.handshake-initiation
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 148
+        max: 148
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "01000000"
+    candidates:
+      - side: L
+        regex: '^\x01\x00\x00\x00'
+    sources:
+      - project: wireguard
+        url: https://www.wireguard.com/protocol/
+  - name: protocol.wireguard.handshake-response
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 92
+        max: 92
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "02000000"
+    candidates:
+      - side: R
+        regex: '^\x02\x00\x00\x00'
+    sources:
+      - project: wireguard
+        url: https://www.wireguard.com/protocol/
+  - name: protocol.wireguard.cookie-reply
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 64
+        max: 64
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "03000000"
+    candidates:
+      - side: R
+        regex: '^\x03\x00\x00\x00'
+    sources:
+      - project: wireguard
+        url: https://www.wireguard.com/protocol/
+  - name: protocol.wireguard.transport-data
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 32
+        max: 65535
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "04000000"
+    candidates:
+      - side: E
+        regex: '^\x04\x00\x00\x00'
+    sources:
+      - project: wireguard
+        url: https://www.wireguard.com/protocol/
+  - name: protocol.dhcp.cookie
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: E
+        op: size_between
+        min: 240
+        max: 65535
+      - side: E
+        op: hex_at
+        offset: 236
+        value: "63825363"
+    candidates:
+      - side: E
+        regex: '^.{236}\x63\x82\x53\x63'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc2131.html#section-2
+  - name: protocol.ssh.banner-both
+    match:
+      - side: L
+        op: line_prefix_within
+        value: "SSH-"
+        limit: 255
+      - side: R
+        op: line_prefix_within
+        value: "SSH-"
+        limit: 255
+    candidates:
+      - side: E
+        regex: '(^|\x0a)SSH-[12]\.'
+  - name: protocol.ftp.control
+    match:
+      - side: L
+        op: prefix_any_ci
+        values:
+          - "USER "
+      - side: R
+        op: prefix_any
+        values:
+          - "120 "
+          - "120-"
+          - "220 "
+          - "220-"
+    candidates:
+      - side: L
+        regex: '^[Uu][Ss][Ee][Rr] '
+      - side: R
+        regex: '^(120|220)[ -]'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig
+  - name: protocol.ftp
+    match:
+      - side: L
+        op: prefix_any_ci
+        values:
+          - "USER "
+      - side: R
+        op: prefix_any
+        values:
+          - "120 "
+          - "120-"
+          - "220 "
+          - "220-"
+    candidates:
+      - side: L
+        regex: '^[Uu][Ss][Ee][Rr] '
+      - side: R
+        regex: '^(120|220)[ -]'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig
+  - name: enc.tls.protocol.ftp
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - ftp
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.socks4.connect
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "0401"
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "005A"
+    candidates:
+      - side: L
+        regex: '^\x04\x01'
+      - side: R
+        regex: '^\x00\x5a'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
+  - name: protocol.socks5.no-auth
+    match:
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "050100"
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "0500"
+    candidates:
+      - side: L
+        regex: '^\x05\x01\x00'
+      - side: R
+        regex: '^\x05\x00'
+    sources:
+      - project: zeek
+        url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
+  - name: protocol.smb1.netbios
+    match:
+      - side: E
+        op: hex_at
+        offset: 4
+        value: FF534D42
+    candidates:
+      - side: E
+        regex: '^....\xffSMB'
+  - name: protocol.smb2.netbios
+    match:
+      - side: E
+        op: hex_at
+        offset: 4
+        value: fe534d42
+    candidates:
+      - side: E
+        regex: '^....\xfeSMB'
+  - name: protocol.smb3.encrypted
+    match:
+      - side: E
+        op: hex_at
+        offset: 4
+        value: fd534d42
+    candidates:
+      - side: E
+        regex: '^....\xfdSMB'
+  - name: protocol.smb
+    match:
+      - side: E
+        op: candidate_seen
+    candidates:
+      - side: E
+        regex: '^....[\xfd\xfe]SMB'
+  - name: enc.tls.protocol.smb
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - smb
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids

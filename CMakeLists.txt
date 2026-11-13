@@ -23,11 +23,15 @@ if(NOT SIFT_PYYAML_RESULT EQUAL 0)
 endif()
 
 set(SIFT_COMPILED_SIGNATURES ${CMAKE_CURRENT_BINARY_DIR}/generated/compiled_signatures.hpp)
+file(GLOB_RECURSE SIFT_PRODUCTION_SIGNATURE_PACKS CONFIGURE_DEPENDS
+    signatures/protocols/*.yaml
+    signatures/applications/*.yaml)
 add_custom_command(
     OUTPUT ${SIFT_COMPILED_SIGNATURES}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/compile_signatures.py
             ${CMAKE_CURRENT_SOURCE_DIR}/signatures/default.yaml ${SIFT_COMPILED_SIGNATURES}
     DEPENDS tools/compile_signatures.py signatures/default.yaml
+            ${SIFT_PRODUCTION_SIGNATURE_PACKS}
     VERBATIM
 )
 add_custom_target(sift_signature_pack DEPENDS ${SIFT_COMPILED_SIGNATURES})
@@ -101,7 +105,8 @@ if(BUILD_TESTING)
         http1 http2 http3 dns doh quic tls dtls ssh ftp socks4 socks5 smb1 smb2
         smb3 smb postgresql mysql redis bgp ldap snmp kerberos ntp rdp rfb sip
         bittorrent amqp ajp13 memcached smtp imap pop3 syslog stun wireguard dhcp
-        diameter gtp radius kafka iec104 mqtt modbus opcua coap fastcgi youtube streaming
+        diameter gtp radius kafka iec104 mqtt modbus opcua coap fastcgi rtsp rtcp
+        dhcpv6 s7comm youtube streaming
         negative)
     foreach(family IN LISTS SIFT_SIGNATURE_FAMILIES)
         add_test(NAME "signatures.${family}"

@@ -1,0 +1,413 @@
+signatures:
+  - name: protocol.iec104.i-format
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 6
+        max: 257
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "68"
+      - side: E
+        op: size_from_uint_at
+        offset: 1
+        width: 1
+        endian: be
+        adjustment: 2
+      - side: E
+        op: uint_at
+        offset: 2
+        width: 1
+        endian: be
+        mask: 1
+        masked_value: 0
+    candidates:
+      - side: E
+        regex: '^\x68.'
+    sources:
+      - project: wireshark
+        url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c
+  - name: protocol.iec104.s-format
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 6
+        max: 6
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "680401000000"
+    candidates:
+      - side: E
+        regex: '^\x68\x04\x01\x00\x00\x00'
+    sources:
+      - project: wireshark
+        url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c
+  - name: protocol.iec104.u-format
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 6
+        max: 6
+      - side: E
+        op: hex_at
+        offset: 0
+        value: "6804"
+      - side: E
+        op: uint_at
+        offset: 2
+        width: 1
+        endian: be
+        mask: 255
+        masked_values:
+          - 7
+          - 11
+          - 19
+          - 35
+          - 67
+          - 131
+      - side: E
+        op: hex_at
+        offset: 3
+        value: "000000"
+    candidates:
+      - side: E
+        regex: '^\x68\x04[\x07\x0b\x13\x23\x43\x83]\x00\x00\x00'
+    sources:
+      - project: wireshark
+        url: https://github.com/wireshark/wireshark/blob/6cf21a765b876ad27722a1fb7daa97886e42d544/epan/dissectors/packet-iec104.c
+  - name: protocol.mqtt.connect
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 10
+        max: 268435456
+      - side: L
+        op: candidate_seen
+    candidates:
+      - side: L
+        regex: '^\x10(?:[\x00-\x7f]|[\x80-\xff][\x00-\x7f]|[\x80-\xff]{2}[\x00-\x7f]|[\x80-\xff]{3}[\x00-\x7f])\x00\x04MQTT[\x04\x05]'
+    sources:
+      - project: oasis-open
+        url: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033
+  - name: enc.tls.protocol.mqtt
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - mqtt
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+  - name: protocol.modbus.tcp
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: E
+        op: size_between
+        min: 8
+        max: 260
+      - side: E
+        op: hex_at
+        offset: 2
+        value: "0000"
+      - side: E
+        op: size_from_uint_at
+        offset: 4
+        width: 2
+        endian: be
+        adjustment: 6
+      - side: E
+        op: uint_at
+        offset: 7
+        width: 1
+        endian: be
+        min: 1
+        max: 127
+    candidates:
+      - side: E
+        regex: '^..\x00\x00....'
+    sources:
+      - project: modbus-organization
+        url: https://modbus.org/docs/Modbus_Messaging_Implementation_Guide_V1_0b.pdf
+  - name: protocol.opcua.hello
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 32
+        max: 16777216
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "48454C46"
+      - side: L
+        op: size_from_uint_at
+        offset: 4
+        width: 4
+        endian: le
+    candidates:
+      - side: L
+        regex: '^HELF....'
+    sources:
+      - project: opc-foundation
+        url: https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.2
+  - name: protocol.opcua.acknowledge
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: R
+        op: size_between
+        min: 28
+        max: 28
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "41434B46"
+      - side: R
+        op: size_from_uint_at
+        offset: 4
+        width: 4
+        endian: le
+    candidates:
+      - side: R
+        regex: '^ACKF....'
+    sources:
+      - project: opc-foundation
+        url: https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.2
+  - name: protocol.opcua.error
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: R
+        op: size_between
+        min: 16
+        max: 16777216
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "45525246"
+      - side: R
+        op: size_from_uint_at
+        offset: 4
+        width: 4
+        endian: le
+    candidates:
+      - side: R
+        regex: '^ERRF....'
+    sources:
+      - project: opc-foundation
+        url: https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.2
+  - name: protocol.opcua.reverse-hello
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: R
+        op: size_between
+        min: 16
+        max: 16777216
+      - side: R
+        op: hex_at
+        offset: 0
+        value: "52484546"
+      - side: R
+        op: size_from_uint_at
+        offset: 4
+        width: 4
+        endian: le
+    candidates:
+      - side: R
+        regex: '^RHEF....'
+    sources:
+      - project: opc-foundation
+        url: https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.2
+  - name: protocol.coap.udp-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: L
+        op: size_between
+        min: 4
+        max: 65535
+      - side: L
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 192
+        masked_value: 64
+      - side: L
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 15
+        masked_values:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+      - side: L
+        op: uint_at
+        offset: 1
+        width: 1
+        endian: be
+        min: 1
+        max: 7
+    candidates:
+      - side: L
+        regex: '^[\x40-\x48\x50-\x58\x60-\x68\x70-\x78][\x01-\x07]..'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc7252.html#section-3
+  - name: protocol.coap.udp-response
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - udp
+      - side: R
+        op: size_between
+        min: 4
+        max: 65535
+      - side: R
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 192
+        masked_value: 64
+      - side: R
+        op: uint_at
+        offset: 0
+        width: 1
+        endian: be
+        mask: 15
+        masked_values:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+      - side: R
+        op: uint_at
+        offset: 1
+        width: 1
+        endian: be
+        mask: 224
+        masked_values:
+          - 64
+          - 128
+          - 160
+    candidates:
+      - side: R
+        regex: '^[\x40-\x48\x50-\x58\x60-\x68\x70-\x78][\x40-\x5f\x80-\xbf]..'
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc7252.html#section-3
+  - name: enc.tls.protocol.coap
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - coap
+    sources:
+      - project: rfc-editor
+        url: https://www.rfc-editor.org/rfc/rfc8323.html#section-8.2
+  - name: protocol.fastcgi.begin-request
+    match:
+      - field: flow.transport
+        op: equals_any
+        values:
+          - tcp
+      - side: L
+        op: size_between
+        min: 16
+        max: 16
+      - side: L
+        op: hex_at
+        offset: 0
+        value: "0101"
+      - side: L
+        op: uint_at
+        offset: 2
+        width: 2
+        endian: be
+        min: 1
+      - side: L
+        op: hex_at
+        offset: 4
+        value: "00080000"
+      - side: L
+        op: uint_at
+        offset: 8
+        width: 2
+        endian: be
+        min: 1
+        max: 3
+      - side: L
+        op: uint_at
+        offset: 10
+        width: 1
+        endian: be
+        mask: 254
+        masked_value: 0
+      - side: L
+        op: hex_at
+        offset: 11
+        value: "0000000000"
+    candidates:
+      - side: L
+        regex: '^\x01\x01..\x00\x08\x00\x00'
+    sources:
+      - project: fastcgi-archives
+        url: https://github.com/FastCGI-Archives/mod_fastcgi/blob/master/fcgi_protocol.c
+  - name: enc.tls.protocol.radius
+    match:
+      - field: flow.tls.alpn
+        op: equals_any
+        values:
+          - "radius/1.0"
+          - "radius/1.1"
+    sources:
+      - project: iana
+        url: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids

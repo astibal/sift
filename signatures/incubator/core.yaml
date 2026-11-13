@@ -3,7 +3,8 @@ signatures:
   - id: protocol.http2.server-frame
     transport: tcp
     layer: protocol
-    result: { protocol: http2 }
+    result:
+      protocol: http2
     confidence: probable
     logic: all
     enables: http2
@@ -11,7 +12,9 @@ signatures:
       - side: right
         offset: 0
         min_size: 9
-        match: { type: validator, name: http2.frame-header }
+        match:
+          type: validator
+          name: http2.frame-header
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/http2/http2.rs
@@ -20,7 +23,8 @@ signatures:
   - id: protocol.dnp3.magic
     transport: any
     layer: protocol
-    result: { protocol: dnp3 }
+    result:
+      protocol: dnp3
     confidence: high
     logic: all
     enables: dnp3
@@ -28,10 +32,14 @@ signatures:
       - side: either
         offset: 0
         min_size: 10
-        match: { type: bytes, value_hex: '05 64' }
+        match:
+          type: bytes
+          value_hex: '05 64'
       - side: either
         offset: 0
-        match: { type: validator, name: dnp3.link-header-crc }
+        match:
+          type: validator
+          name: dnp3.link-header-crc
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dnp3/dpd.sig
@@ -39,17 +47,22 @@ signatures:
   - id: protocol.ftp.dialog
     transport: tcp
     layer: protocol
-    result: { protocol: ftp }
+    result:
+      protocol: ftp
     confidence: high
     logic: all
     enables: ftp
     clauses:
       - side: left
         search_max: 1024
-        match: { type: regex, value: '(?im)^(?:[ \t]*)USER ' }
+        match:
+          type: regex
+          value: '(?im)^(?:[ \t]*)USER '
       - side: right
         search_max: 1024
-        match: { type: regex, value: '(?m)^[ \t]*(120|220)[^0-9].*\r?\n[ \t]*(230|331)[^0-9]' }
+        match:
+          type: regex
+          value: '(?m)^[ \t]*(120|220)[^0-9].*\r?\n[ \t]*(230|331)[^0-9]'
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/ftp/dpd.sig
@@ -57,18 +70,23 @@ signatures:
   - id: protocol.smtp.dialog
     transport: tcp
     layer: protocol
-    result: { protocol: smtp }
+    result:
+      protocol: smtp
     confidence: high
     logic: all
     enables: smtp
     clauses:
       - side: left
         search_max: 1024
-        match: { type: regex, value: '(?im)^[ \t]*(EHLO|HELO)[ \t]' }
+        match:
+          type: regex
+          value: '(?im)^[ \t]*(EHLO|HELO)[ \t]'
       - side: right
         offset: 0
         search_max: 512
-        match: { type: regex, value: '^[ \t]*220[ -]' }
+        match:
+          type: regex
+          value: '^[ \t]*220[ -]'
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/smtp/dpd.sig
@@ -76,17 +94,22 @@ signatures:
   - id: protocol.pop3.dialog
     transport: tcp
     layer: protocol
-    result: { protocol: pop3 }
+    result:
+      protocol: pop3
     confidence: high
     logic: all
     enables: pop3
     clauses:
       - side: left
         search_max: 1024
-        match: { type: regex, value: '(?im)^[ \t]*(USER |APOP |CAPA|AUTH|STLS)' }
+        match:
+          type: regex
+          value: '(?im)^[ \t]*(USER |APOP |CAPA|AUTH|STLS)'
       - side: right
         offset: 0
-        match: { type: ascii, value: '+OK' }
+        match:
+          type: ascii
+          value: '+OK'
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/pop3/dpd.sig
@@ -94,7 +117,8 @@ signatures:
   - id: protocol.socks4.dialog
     transport: tcp
     layer: tunnel
-    result: { protocol: socks4 }
+    result:
+      protocol: socks4
     confidence: certain
     logic: all
     enables: socks
@@ -102,10 +126,14 @@ signatures:
       - side: left
         offset: 0
         search_max: 41
-        match: { type: regex, value: '^\x04[\x01\x02].{0,32}\x00' }
+        match:
+          type: regex
+          value: '^\x04[\x01\x02].{0,32}\x00'
       - side: right
         offset: 0
-        match: { type: regex, value: '^\x00[\x5a-\x5d]' }
+        match:
+          type: regex
+          value: '^\x00[\x5a-\x5d]'
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
@@ -113,18 +141,24 @@ signatures:
   - id: protocol.socks5.negotiation
     transport: tcp
     layer: tunnel
-    result: { protocol: socks5 }
+    result:
+      protocol: socks5
     confidence: certain
     logic: all
     enables: socks
     clauses:
       - side: left
         offset: 0
-        match: { type: validator, name: socks5.client-method-list }
+        match:
+          type: validator
+          name: socks5.client-method-list
       - side: right
         offset: 0
         min_size: 2
-        match: { type: masked-bytes, value_hex: '05 00', mask_hex: 'ff 00' }
+        match:
+          type: masked-bytes
+          value_hex: '05 00'
+          mask_hex: 'ff 00'
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/socks/dpd.sig
@@ -132,7 +166,9 @@ signatures:
   - id: protocol.postgresql.startup3
     transport: tcp
     layer: protocol
-    result: { protocol: postgresql, version: '3.x' }
+    result:
+      protocol: postgresql
+      version: '3.x'
     confidence: high
     logic: all
     enables: postgresql
@@ -140,11 +176,15 @@ signatures:
       - side: left
         offset: 0
         search_max: 268
-        match: { type: regex, value: '^....\x00\x03\x00.{0,256}user\x00' }
+        match:
+          type: regex
+          value: '^....\x00\x03\x00.{0,256}user\x00'
       - side: right
         offset: 0
         min_size: 5
-        match: { type: validator, name: postgresql.server-message }
+        match:
+          type: validator
+          name: postgresql.server-message
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/postgresql/dpd.sig
@@ -154,7 +194,8 @@ signatures:
   - id: protocol.bittorrent.dht
     transport: udp
     layer: protocol
-    result: { protocol: bittorrent_dht }
+    result:
+      protocol: bittorrent_dht
     confidence: high
     logic: all
     enables: bittorrent_dht
@@ -162,10 +203,14 @@ signatures:
       - side: either
         offset: 0
         min_size: 12
-        match: { type: ascii, value: 'd1:ad2:id20:' }
+        match:
+          type: ascii
+          value: 'd1:ad2:id20:'
       - side: either
         offset: 0
-        match: { type: validator, name: bittorrent-dht.bencode-message }
+        match:
+          type: validator
+          name: bittorrent-dht.bencode-message
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/bittorrent_dht/bittorrent_dht.rs#L27-L35
@@ -173,7 +218,8 @@ signatures:
   - id: protocol.imap.server-banner
     transport: tcp
     layer: protocol
-    result: { protocol: imap }
+    result:
+      protocol: imap
     confidence: high
     logic: any
     enables: imap
@@ -181,11 +227,15 @@ signatures:
       - side: right
         offset: 0
         search_max: 10
-        match: { type: regex, value: '(?i)^\* (OK|NO|BAD|LIST|ESEARCH|STATUS|FLAGS) ' }
+        match:
+          type: regex
+          value: '(?i)^\* (OK|NO|BAD|LIST|ESEARCH|STATUS|FLAGS) '
       - side: left
         offset: 0
         search_max: 17
-        match: { type: regex, value: '(?i)^.{1,6} CAPABILITY' }
+        match:
+          type: regex
+          value: '(?i)^.{1,6} CAPABILITY'
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/src/app-layer-imap.c#L64-L115
@@ -194,7 +244,8 @@ signatures:
   - id: protocol.xmpp.stream
     transport: tcp
     layer: protocol
-    result: { protocol: xmpp }
+    result:
+      protocol: xmpp
     confidence: high
     logic: any
     enables: xmpp
@@ -202,7 +253,9 @@ signatures:
       - side: either
         offset: 0
         search_max: 1024
-        match: { type: regex, value: "^(<\\?xml[^?>]*\\?>)?[\\n\\r ]*<stream:stream [^>]*xmlns=['\"]jabber:" }
+        match:
+          type: regex
+          value: "^(<\\?xml[^?>]*\\?>)?[\\n\\r ]*<stream:stream [^>]*xmlns=['\"]jabber:"
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/xmpp/dpd.sig
@@ -210,23 +263,32 @@ signatures:
   - id: protocol.websocket.upgrade
     transport: tcp
     layer: protocol
-    result: { protocol: websocket }
+    result:
+      protocol: websocket
     confidence: certain
     logic: all
     enables: websocket
     clauses:
       - side: left
         search_max: 16384
-        match: { type: regex, value: '(?im)^Upgrade:[ \t]*websocket[ \t]*\r?$' }
+        match:
+          type: regex
+          value: '(?im)^Upgrade:[ \t]*websocket[ \t]*\r?$'
       - side: left
         search_max: 16384
-        match: { type: regex, value: '(?im)^Connection:.*\bUpgrade\b.*\r?$' }
+        match:
+          type: regex
+          value: '(?im)^Connection:.*\bUpgrade\b.*\r?$'
       - side: left
         search_max: 16384
-        match: { type: regex, value: '(?im)^Sec-WebSocket-Key:[ \t]*[A-Za-z0-9+/]{22}==[ \t]*\r?$' }
+        match:
+          type: regex
+          value: '(?im)^Sec-WebSocket-Key:[ \t]*[A-Za-z0-9+/]{22}==[ \t]*\r?$'
       - side: right
         search_max: 16384
-        match: { type: regex, value: '(?i)^HTTP/1\.[01] 101[ ]' }
+        match:
+          type: regex
+          value: '(?i)^HTTP/1\.[01] 101[ ]'
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/websocket/websocket.rs
@@ -234,7 +296,8 @@ signatures:
   - id: protocol.enip.encapsulation
     transport: any
     layer: protocol
-    result: { protocol: enip }
+    result:
+      protocol: enip
     confidence: high
     logic: all
     enables: enip
@@ -242,7 +305,9 @@ signatures:
       - side: either
         offset: 0
         min_size: 24
-        match: { type: validator, name: enip.encapsulation-header-command-length }
+        match:
+          type: validator
+          name: enip.encapsulation-header-command-length
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/enip/enip.rs
@@ -250,7 +315,8 @@ signatures:
   - id: protocol.ike.header
     transport: udp
     layer: protocol
-    result: { protocol: ike }
+    result:
+      protocol: ike
     confidence: high
     logic: all
     enables: ike
@@ -258,7 +324,9 @@ signatures:
       - side: either
         offset: 0
         min_size: 28
-        match: { type: validator, name: ike.cookies-version-exchange-length }
+        match:
+          type: validator
+          name: ike.cookies-version-exchange-length
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/ike/ike.rs#L290-L330
@@ -266,7 +334,8 @@ signatures:
   - id: protocol.nfs.rpc
     transport: any
     layer: protocol
-    result: { protocol: nfs }
+    result:
+      protocol: nfs
     confidence: high
     logic: all
     enables: nfs
@@ -274,7 +343,9 @@ signatures:
       - side: either
         offset: 0
         min_size: 24
-        match: { type: validator, name: rpc.nfs-program-and-version }
+        match:
+          type: validator
+          name: rpc.nfs-program-and-version
     sources:
       - project: suricata
         url: https://github.com/OISF/suricata/blob/4badfd13f43e112dd61c5cbab5718765512ed5ad/rust/src/nfs/nfs.rs#L2947-L3045
@@ -282,7 +353,8 @@ signatures:
   - id: protocol.dcerpc.connection-oriented
     transport: tcp
     layer: protocol
-    result: { protocol: dcerpc }
+    result:
+      protocol: dcerpc
     confidence: high
     logic: all
     enables: dcerpc
@@ -290,10 +362,15 @@ signatures:
       - side: either
         offset: 0
         min_size: 16
-        match: { type: masked-bytes, value_hex: '05 00 00', mask_hex: 'ff fe ec' }
+        match:
+          type: masked-bytes
+          value_hex: '05 00 00'
+          mask_hex: 'ff fe ec'
       - side: either
         offset: 0
-        match: { type: validator, name: dcerpc.common-header-fragment-length }
+        match:
+          type: validator
+          name: dcerpc.common-header-fragment-length
     sources:
       - project: zeek
         url: https://github.com/zeek/zeek/blob/5b7c9c753a8e69da4a6dcd41e7a06c26226647dd/scripts/base/protocols/dce-rpc/dpd.sig

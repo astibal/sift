@@ -9,7 +9,7 @@ ALLOWED_OPERATIONS = {
     "prefix", "prefix_any", "prefix_any_ci", "decimal_prefix", "hex_at", "tls_handshake",
     "line_prefix_within", "domain_suffix_any", "path_extension_any", "equals_any", "uint_at",
     "size_from_uint_at", "label_sequence_at", "size_between", "ber_sequence",
-    "ber_frame", "quic_long_header", "candidate_seen",
+    "ber_frame", "quic_long_header", "tlv_sequence_at", "candidate_seen",
 }
 ALLOWED_SIDES = {"L", "R", "E", "H"}
 ENCRYPTED_NAMESPACES = {
@@ -18,13 +18,69 @@ ENCRYPTED_NAMESPACES = {
 }
 
 
+def load_signature_document(source: Path | str) -> dict:
+    """Load a manifest and its local includes into one validated-order document."""
+    source = Path(source).resolve()
+    root = source.parent
+    loaded: set[Path] = set()
+    active: set[Path] = set()
+
+    def load(path: Path, *, manifest: bool = False) -> tuple[dict, list[dict]]:
+        path = path.resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"signature include escapes pack root: {path}")
+        if path in active:
+            raise ValueError(f"cyclic signature include: {path}")
+        if path in loaded:
+            raise ValueError(f"duplicate signature include: {path}")
+
+        active.add(path)
+        loaded.add(path)
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError(f"{path}: signature pack must be a mapping")
+        includes = document.get("includes", [])
+        if not isinstance(includes, list) or not all(
+                isinstance(include, str) and include for include in includes):
+            raise ValueError(f"{path}: includes must be a list of paths")
+
+        signatures: list[dict] = []
+        for include in includes:
+            include_path = Path(include)
+            if include_path.is_absolute():
+                raise ValueError(f"{path}: absolute signature include is not allowed")
+            _, included = load(path.parent / include_path)
+            signatures.extend(included)
+
+        local = document.get("signatures", [])
+        if not isinstance(local, list):
+            raise ValueError(f"{path}: signatures must be a list")
+        signatures.extend(local)
+        active.remove(path)
+
+        metadata = {
+            key: value for key, value in document.items()
+            if key not in {"includes", "signatures"}
+        }
+        if not manifest and metadata and metadata != {"version": 1}:
+            raise ValueError(f"{path}: included packs may only contain signatures")
+        return metadata, signatures
+
+    metadata, signatures = load(source, manifest=True)
+    metadata["signatures"] = signatures
+    return metadata
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
 
-    document = yaml.safe_load(args.source.read_text(encoding="utf-8"))
+    try:
+        document = load_signature_document(args.source)
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        raise SystemExit(str(error)) from error
     if not isinstance(document, dict) or not isinstance(document.get("signatures"), list):
         raise SystemExit("signature pack must contain a signatures list")
     names = set()
@@ -77,6 +133,7 @@ def main() -> None:
                         "tls_handshake", "decimal_prefix", "uint_at",
                         "size_from_uint_at", "label_sequence_at", "size_between",
                         "ber_sequence", "ber_frame", "quic_long_header",
+                        "tlv_sequence_at",
                         "candidate_seen",
                     }):
                 raise SystemExit(f"signature {rule['name']} clause has no value")
@@ -94,9 +151,20 @@ def main() -> None:
                     raise SystemExit(f"signature {rule['name']} has an invalid integer width")
                 if clause.get("endian", "be") not in {"be", "le"}:
                     raise SystemExit(f"signature {rule['name']} has an invalid byte order")
+                if (not isinstance(clause.get("multiplier", 1), int) or
+                        clause.get("multiplier", 1) < 1):
+                    raise SystemExit(f"signature {rule['name']} has an invalid multiplier")
+                if not isinstance(clause.get("repeat", False), bool):
+                    raise SystemExit(f"signature {rule['name']} has an invalid repeat flag")
             if clause["op"] == "label_sequence_at" and not isinstance(
                     clause.get("offset"), int):
                 raise SystemExit(f"signature {rule['name']} label sequence has no offset")
+            if clause["op"] == "tlv_sequence_at" and (
+                    clause.get("code_width", 2) not in {1, 2, 3, 4} or
+                    clause.get("length_width", 2) not in {1, 2, 3, 4} or
+                    not isinstance(clause.get("offset", 0), int) or
+                    clause.get("offset", 0) < 0):
+                raise SystemExit(f"signature {rule['name']} has an invalid TLV sequence")
             if clause["op"] == "ber_sequence":
                 if not isinstance(clause.get("children"), list) or not clause["children"]:
                     raise SystemExit(f"signature {rule['name']} BER sequence has no children")

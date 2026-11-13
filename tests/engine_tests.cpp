@@ -437,7 +437,7 @@ int main(const int argc, char** argv) {
           "Hyperscan scanner metadata missing");
     check(live_stats.at("scanner").at("mode") == "stream",
           "Hyperscan stream mode missing");
-    check(live_stats.at("scanner").at("patterns") == 90,
+    check(live_stats.at("scanner").at("patterns") == 98,
           "Hyperscan pattern count is wrong");
     check(live_stats.at("scanner").at("scans") == 2,
           "Hyperscan scan count is wrong");
@@ -445,7 +445,7 @@ int main(const int argc, char** argv) {
     check(live_stats.at("traffic").at("payloads") == 2, "payloads not counted");
     check(live_stats.at("signatures").at("by_name").at("protocol.http2.prior-knowledge") == 1,
           "signature count missing");
-    check(live_stats.at("signatures").at("loaded") == 104,
+    check(live_stats.at("signatures").at("loaded") == 112,
           "loaded signature count is wrong");
     check(live_stats.at("timing").at("engine_delay_us").at("samples") == 2,
           "engine timing samples missing");

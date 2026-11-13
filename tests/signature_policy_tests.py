@@ -24,6 +24,26 @@ def compile_pack(compiler: Path, signatures: list[dict]) -> subprocess.Completed
         )
 
 
+def compile_manifest(
+    compiler: Path, manifest: dict, included: dict[str, dict]
+) -> subprocess.CompletedProcess:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "pack.yaml"
+        output = root / "pack.hpp"
+        source.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+        for name, document in included.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(yaml.safe_dump(document), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(compiler), str(source), str(output)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
 def rule(name: str, field: str) -> dict:
     return {
         "name": name,
@@ -61,6 +81,29 @@ def main() -> None:
     )
     assert missing.returncode != 0
     assert "has no flow.tls. evidence" in missing.stderr
+
+    included = compile_manifest(
+        compiler,
+        {"version": 1, "includes": ["protocols/demo.yaml"]},
+        {"protocols/demo.yaml": {"signatures": [plain]}},
+    )
+    assert included.returncode == 0, included.stderr
+
+    duplicate_include = compile_manifest(
+        compiler,
+        {"version": 1, "includes": ["demo.yaml", "demo.yaml"]},
+        {"demo.yaml": {"signatures": [plain]}},
+    )
+    assert duplicate_include.returncode != 0
+    assert "duplicate signature include" in duplicate_include.stderr
+
+    escaped_include = compile_manifest(
+        compiler,
+        {"version": 1, "includes": ["../outside.yaml"]},
+        {},
+    )
+    assert escaped_include.returncode != 0
+    assert "escapes pack root" in escaped_include.stderr
 
 
 if __name__ == "__main__":

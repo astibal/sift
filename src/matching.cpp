@@ -167,6 +167,28 @@ bool has_label_sequence(const std::string_view stream,
     return false;
 }
 
+bool has_tlv_sequence(const std::string_view stream,
+                      const nlohmann::json& clause) {
+    const auto code_width = clause.value("code_width", 2U);
+    const auto length_width = clause.value("length_width", 2U);
+    const auto little_endian = clause.value("endian", "be") == "le";
+    auto cursor = clause.value("offset", 0U);
+    std::size_t items{};
+
+    while(cursor < stream.size()) {
+        const auto header_width = code_width + length_width;
+        if(header_width > stream.size() - cursor) return false;
+        const auto length = integer_at(
+            stream, cursor + code_width, length_width, little_endian);
+        if(!length.has_value()) return false;
+        cursor += header_width;
+        if(*length > stream.size() - cursor) return false;
+        cursor += *length;
+        ++items;
+    }
+    return items >= clause.value("min_items", 1U);
+}
+
 // Minimal BER view for signatures; intentionally not a general ASN.1 decoder.
 struct BerElement {
     std::uint8_t tag{};
@@ -322,6 +344,10 @@ std::size_t required_evidence_bytes(const nlohmann::json& clause) {
     if(operation == "quic_long_header") {
         return clause.value("offset", 0U) + 7U;
     }
+    if(operation == "tlv_sequence_at") {
+        return clause.value("offset", 0U) + clause.value("code_width", 2U) +
+               clause.value("length_width", 2U);
+    }
     if(operation == "candidate_seen") return 0;
     if(operation == "decimal_prefix") {
         return clause.at("digits").get<std::size_t>() + 1U;
@@ -392,8 +418,29 @@ bool stream_matches(const nlohmann::json& clause,
 
         if(operation == "size_from_uint_at") {
             const auto adjustment = clause.value("adjustment", 0U);
-            return static_cast<std::uint64_t>(*integer) + adjustment ==
-                   stream.size();
+            const auto multiplier = clause.value("multiplier", 1U);
+            const auto frame_size = [&](const std::uint32_t value) {
+                return static_cast<std::uint64_t>(value) * multiplier + adjustment;
+            };
+            if(clause.value("repeat", false)) {
+                std::size_t cursor{};
+                while(cursor < stream.size()) {
+                    const auto next = integer_at(
+                        stream, cursor + offset, width,
+                        clause.value("endian", "be") == "le");
+                    if(!next.has_value()) return false;
+                    const auto next_size = frame_size(*next);
+                    if(next_size == 0 || next_size > stream.size() - cursor) {
+                        return false;
+                    }
+                    cursor += static_cast<std::size_t>(next_size);
+                }
+                return cursor == stream.size();
+            }
+            const auto expected_size = frame_size(*integer);
+            return clause.value("allow_trailing", false)
+                ? expected_size <= stream.size()
+                : expected_size == stream.size();
         }
 
         if(clause.contains("mask") && clause.contains("masked_values")) {
@@ -432,6 +479,7 @@ bool stream_matches(const nlohmann::json& clause,
     if(operation == "quic_long_header") {
         return quic_long_header_matches(stream, clause);
     }
+    if(operation == "tlv_sequence_at") return has_tlv_sequence(stream, clause);
     // Reached only after Hyperscan has selected the owning rule.
     if(operation == "candidate_seen") return true;
     if(operation == "line_prefix_within") {
