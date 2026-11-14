@@ -319,6 +319,8 @@ private:
     }
 
     nlohmann::json diagnostics() {
+        auto lored = lored_.status();
+        lored["service"] = lored_.service_status();
         const auto uptime_ms = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - started_).count());
@@ -341,7 +343,7 @@ private:
                 {"decode_errors", decode_errors_.load(std::memory_order_relaxed)},
             }},
             {"engine", runtime_.status()},
-            {"lored", lored_.status()},
+            {"lored", std::move(lored)},
             {"dns_evidence", dns_evidence_.status()},
         };
     }

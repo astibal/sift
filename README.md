@@ -38,7 +38,14 @@ meaningful to query. The timeout defaults to 50 ms and is configurable through
 
 LoreD candidates remain nested under `lored`; Sift never presents them as
 payload signature matches. `/api/diagnostics` exposes LoreD requests, outcomes
-and latency.
+and latency. Its `lored.service` section also fetches LoreD's `GET /v1/stats`
+on demand: the complete response appears under `stats`, including database
+size/acquisition metadata (when provided by LoreD), indexes and LoreD's own cache.
+This read has a separate one-second timeout and a 1 MiB response limit; it runs
+outside the classification lock and does not change enrichment counters.
+Unavailable, invalid or oversized upstream statistics produce an explicit
+`status: unavailable` with an error; disabled LoreD reports `status: disabled`.
+Smithproxy's `diag sys sift-lored stats` displays this nested section automatically.
 
 Complete HTTP URLs are private by default. They are forwarded only when the
 request sets `requirements.lored.include_url` to true; destination IP, port,

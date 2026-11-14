@@ -514,6 +514,8 @@ int main(const int argc, char** argv) {
           "disabled LoreD client returned a wrong status");
     check(disabled_lore.status().at("requests") == 0,
           "disabled LoreD client reports requests");
+    check(disabled_lore.service_status().at("status") == "disabled",
+          "disabled LoreD statistics must not perform a network lookup");
     disabled_lore.close(lore_key);
     check(sift::lored_mode_name(sift::LoredMode::optional) == "optional" &&
               sift::lored_mode_name(sift::LoredMode::required) == "required",

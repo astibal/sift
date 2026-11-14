@@ -45,8 +45,21 @@ def check(condition, message):
 
 def main():
     lore_requests = []
+    stats_behavior = {"status": 200, "body": {"claims": 17, "database": {"file_bytes": 12345, "sources": [{"id": "test", "fetched_at": "2026-11-14T00:00:00Z"}]}, "index": {"hostname_observables": 9}}}
 
     class LoreHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            check(self.path == "/v1/stats", "wrong LoreD statistics route")
+            value = stats_behavior["body"]
+            body = (value if isinstance(value, str) else json.dumps(value)).encode()
+            self.send_response(stats_behavior["status"])
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def do_POST(self):
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             query = json.loads(body)
@@ -214,6 +227,21 @@ def main():
         check(len(lore_requests) == 6,
               "per-flow LoreD request limit was not enforced")
 
+        _, diagnostic = request(port, "GET", "/api/diagnostics")
+        service = diagnostic["lored"]["service"]
+        check(service["status"] == "available" and service["stats"] == stats_behavior["body"],
+              "LoreD database/index statistics were not forwarded intact")
+        check(len(lore_requests) == 6 and diagnostic["lored"]["requests"] == 6,
+              "statistics read changed classification counters")
+        for code, body, error in [(503, {}, "HTTP 503"), (200, "bad json", "invalid LoreD"),
+                                  (200, "x" * (1024 * 1024 + 1), "exceed 1 MiB")]:
+            stats_behavior.update(status=code, body=body)
+            _, diagnostic = request(port, "GET", "/api/diagnostics")
+            service = diagnostic["lored"]["service"]
+            check(service["status"] == "unavailable" and error in service["error"],
+                  "statistics failure must be explicit")
+            check(diagnostic["lored"]["requests"] == 6 and diagnostic["lored"]["failures"] == 0,
+                  "statistics errors contaminated classification counters")
         lore_server.shutdown()
         lore_server.server_close()
         failing = json.loads(json.dumps(content))
@@ -256,6 +284,8 @@ def main():
         status, diagnostics = request(port, "GET", "/api/diagnostics")
         check(status == 200 and diagnostics["lored"]["requests"] == 8,
               "Lored diagnostics are missing")
+        check(diagnostics["lored"]["service"]["status"] == "unavailable",
+              "offline LoreD service must be explicit")
         check(diagnostics["lored"]["failures"] == 2,
               "Lored failure was not diagnosed")
         check(diagnostics["lored"]["shared_cache_hits"] == 1,

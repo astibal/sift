@@ -322,6 +322,58 @@ void LoredClient::sweep_cache_locked(
     }
 }
 
+nlohmann::json LoredClient::service_status() const {
+    if(!enabled()) return {{"status", "disabled"}};
+    auto unavailable = [](std::string error) {
+        return nlohmann::json{{"status", "unavailable"}, {"error", std::move(error)}};
+    };
+    // Diagnostics are read on demand, outside the flow/cache mutex. Never make
+    // classification requests pay for a database statistics call.
+    auto url = config_.url;
+    const auto scheme = url.find("://");
+    const auto authority = scheme == std::string::npos ? 0 : scheme + 3;
+    const auto suffix = url.find_first_of("?#", authority);
+    if(suffix != std::string::npos) url.erase(suffix);
+    const auto path = url.find('/', authority);
+    if(path == std::string::npos) url += "/v1/stats";
+    else url.replace(url.rfind('/') + 1, std::string::npos, "stats");
+
+    struct Response {
+        std::string body;
+        bool oversized = false;
+    } response;
+    CurlHandle curl;
+    if(!curl.value) return unavailable("cannot initialize libcurl");
+    curl_easy_setopt(curl.value, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl.value, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl.value, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl.value, CURLOPT_TIMEOUT_MS, 1000L);
+    curl_easy_setopt(curl.value, CURLOPT_CONNECTTIMEOUT_MS, 1000L);
+    curl_easy_setopt(curl.value, CURLOPT_WRITEFUNCTION,
+        +[](char* bytes, std::size_t size, std::size_t count, void* target) -> std::size_t {
+            auto& reply = *static_cast<Response*>(target);
+            constexpr std::size_t limit = 1024 * 1024;
+            if(size && count > (limit - reply.body.size()) / size) {
+                reply.oversized = true;
+                return 0;
+            }
+            const auto length = size * count;
+            try { reply.body.append(bytes, length); }
+            catch(...) { return 0; }
+            return length;
+        });
+    curl_easy_setopt(curl.value, CURLOPT_WRITEDATA, &response);
+    const auto result = curl_easy_perform(curl.value);
+    if(response.oversized) return unavailable("LoreD statistics exceed 1 MiB");
+    if(result != CURLE_OK) return unavailable(curl_easy_strerror(result));
+    long status = 0;
+    curl_easy_getinfo(curl.value, CURLINFO_RESPONSE_CODE, &status);
+    if(status < 200 || status >= 300) return unavailable("HTTP " + std::to_string(status));
+    auto stats = nlohmann::json::parse(response.body, nullptr, false);
+    if(!stats.is_object()) return unavailable("invalid LoreD statistics JSON");
+    return {{"status", "available"}, {"stats", std::move(stats)}};
+}
+
 nlohmann::json LoredClient::status() const {
     std::scoped_lock guard(lock_);
     return {

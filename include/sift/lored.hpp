@@ -53,6 +53,8 @@ public:
     /** Forget per-flow enrichment state after the capture reports flow close. */
     void close(const FlowKey& key);
     [[nodiscard]] nlohmann::json status() const;
+    /** On-demand LoreD database/index/cache diagnostics; no classification counters change. */
+    [[nodiscard]] nlohmann::json service_status() const;
 
 private:
     [[nodiscard]] nlohmann::json build_query(
